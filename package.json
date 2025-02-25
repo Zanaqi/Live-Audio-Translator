@@ -9,19 +9,31 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next": "15.1.1"
+    "chinese-converter": "^0.0.5",
+    "events": "^3.3.0",
+    "lodash": "^4.x.x",
+    "lucide-react": "^0.475.0",
+    "mongodb": "^6.13.1",
+    "mongoose": "^8.10.1",
+    "next": "latest",
+    "pinyin": "^4.0.0-alpha.2",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-qr-code": "^2.0.15",
+    "uuid": "^11.1.0",
+    "webpack": "^5.97.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1",
-    "eslint": "^9",
-    "eslint-config-next": "15.1.1",
-    "@eslint/eslintrc": "^3"
+    "@types/events": "^3.0.3",
+    "@types/lodash": "^4.17.15",
+    "@types/node": "^22.13.1",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/ws": "^8.5.14",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest"
   }
 }

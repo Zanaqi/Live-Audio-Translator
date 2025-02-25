@@ -1,101 +1,172 @@
-import Image from "next/image";
+// app/page.tsx
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { Mic, Headphones, Languages, Globe } from 'lucide-react'
 
 export default function Home() {
+  const [roomCode, setRoomCode] = useState('')
+  
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-gradient-to-b from-indigo-100 to-white p-4">
+      <div className="max-w-6xl mx-auto pt-10">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-indigo-800 mb-4">
+            AI-Powered Real-Time Audio Translation
+          </h1>
+          <p className="text-xl text-indigo-600 max-w-3xl mx-auto">
+            Break language barriers with our multilingual communication system. 
+            Perfect for tour guides, conferences, and international events.
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        
+        <div className="grid md:grid-cols-2 gap-8 mb-16">
+          {/* Tour Guide Option */}
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden transform transition-all hover:scale-105">
+            <div className="bg-purple-600 p-6 text-white">
+              <h2 className="text-2xl font-bold flex items-center">
+                <Mic className="mr-2" /> Tour Guide
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-gray-600">
+                Create a room for your tour group where you can speak in your language 
+                and tourists will receive real-time translations in their preferred languages.
+              </p>
+              
+              <ul className="space-y-2 text-gray-600">
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2">•</span>
+                  <span>Speak naturally in your own language</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2">•</span>
+                  <span>Generate a unique room code for tourists</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2">•</span>
+                  <span>Unlimited translations to multiple languages</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2">•</span>
+                  <span>Monitor connected tourists</span>
+                </li>
+              </ul>
+              
+              <Link 
+                href="/guide" 
+                className="block w-full text-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+              >
+                Start as Tour Guide
+              </Link>
+            </div>
+          </div>
+          
+          {/* Tourist Option */}
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden transform transition-all hover:scale-105">
+            <div className="bg-teal-600 p-6 text-white">
+              <h2 className="text-2xl font-bold flex items-center">
+                <Headphones className="mr-2" /> Tourist
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-gray-600">
+                Join a tour and receive real-time translations in your preferred language.
+                Simply enter the room code provided by your guide.
+              </p>
+              
+              <ul className="space-y-2 text-gray-600">
+                <li className="flex items-start">
+                  <span className="text-teal-500 mr-2">•</span>
+                  <span>Choose your preferred language</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-teal-500 mr-2">•</span>
+                  <span>Receive real-time translations</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-teal-500 mr-2">•</span>
+                  <span>Listen to audio in your language</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-teal-500 mr-2">•</span>
+                  <span>View both original text and translation</span>
+                </li>
+              </ul>
+              
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value)}
+                  placeholder="Enter room code (optional)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 text-gray-600"
+                />
+                
+                <Link 
+                  href={roomCode ? `/join?code=${roomCode}` : '/join'}
+                  className="block w-full text-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                >
+                  Join as Tourist
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Features Section */}
+        <div className="mb-16">
+          <h2 className="text-2xl font-bold text-center text-indigo-800 mb-8">Key Features</h2>
+          
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-xl shadow-md">
+              <div className="flex items-center mb-4">
+                <div className="bg-indigo-100 p-3 rounded-full mr-3">
+                  <Languages className="h-6 w-6 text-indigo-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-600">Multiple Languages</h3>
+              </div>
+              <p className="text-gray-600">
+                Support for Chinese, French, Spanish, German, Italian, 
+                Japanese and more languages coming soon.
+              </p>
+            </div>
+            
+            <div className="bg-white p-6 rounded-xl shadow-md">
+              <div className="flex items-center mb-4">
+                <div className="bg-indigo-100 p-3 rounded-full mr-3">
+                  <Globe className="h-6 w-6 text-indigo-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-600">Real-time Translations</h3>
+              </div>
+              <p className="text-gray-600">
+                Advanced AI technology ensures fast and accurate translations 
+                with context awareness for natural-sounding results.
+              </p>
+            </div>
+            
+            <div className="bg-white p-6 rounded-xl shadow-md">
+              <div className="flex items-center mb-4">
+                <div className="bg-indigo-100 p-3 rounded-full mr-3">
+                  <Headphones className="h-6 w-6 text-indigo-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-600">Text-to-Speech</h3>
+              </div>
+              <p className="text-gray-600">
+                Listen to translations in your preferred language with natural-sounding
+                voice synthesis for a seamless experience.
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Footer */}
+        <div className="text-center text-gray-500 pb-8">
+          <p>© {new Date().getFullYear()} AI-Powered Real-Time Audio Translation System</p>
+          <p className="text-sm mt-1">Capstone Project by Mirza Anaqi Bin Muhammad Haizan</p>
+        </div>
+      </div>
     </div>
-  );
+  )
 }
