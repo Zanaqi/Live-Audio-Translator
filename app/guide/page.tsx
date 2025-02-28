@@ -18,6 +18,7 @@ export default function GuidePage() {
   const [error, setError] = useState<string | null>(null)
   const [guideId, setGuideId] = useState('')
   const [textInput, setTextInput] = useState('')
+  const [roomId, setRoomId] = useState('')
   
   const wsRef = useRef<WebSocket | null>(null)
   const recognitionRef = useRef<any>(null)
@@ -61,6 +62,7 @@ export default function GuidePage() {
       
       const data = await response.json()
       setRoomCode(data.code)
+      setRoomId(data.id) // Store the UUID
       
       // Generate URL for tourists
       const baseUrl = window.location.origin
@@ -71,7 +73,7 @@ export default function GuidePage() {
       setError(null)
       
       // Connect to WebSocket
-      connectWebSocket(data.id)
+      connectWebSocket(data.id, data.code)
       
     } catch (error) {
       console.error('Error creating room:', error)
@@ -80,7 +82,7 @@ export default function GuidePage() {
   }
   
   // Connect to WebSocket server
-  const connectWebSocket = async (roomId: string) => {
+  const connectWebSocket = async (roomId: string, code: string) => {
     try {
       const response = await fetch('/api/ws')
       const { wsUrl } = await response.json()
@@ -88,13 +90,14 @@ export default function GuidePage() {
       wsRef.current = new WebSocket(wsUrl)
       
       wsRef.current.onopen = () => {
-        // Join the room as guide
-        wsRef.current?.send(JSON.stringify({
+          // Join the room as guide
+          wsRef.current?.send(JSON.stringify({
           type: 'join',
-          roomId,
+          roomId, // This is the UUID
+          roomCode: code, // This is the 6-digit code
           participantId: guideId,
           role: 'guide'
-        }))
+          }))
       }
       
       wsRef.current.onmessage = (event) => {
@@ -204,29 +207,23 @@ export default function GuidePage() {
   }
 
   const handleSendText = () => {
-    if (!textInput.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return
-    }
-  
-    console.log('Sending text to WebSocket:', {
-      type: 'speech',
-      roomId: roomCode, // Use roomCode, not roomId
-      text: textInput
-    })
-  
-    // Send the text to all tourists for translation
-    wsRef.current.send(JSON.stringify({
-      type: 'speech',
-      roomId: roomCode, // Use roomCode, not roomId
-      text: textInput
-    }))
-  
-    // Update transcript locally
-    setTranscript(textInput)
-    
-    // Clear input
-    setTextInput('')
+  if (!textInput.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    return
   }
+
+  // Store roomId as state when room is created
+  wsRef.current.send(JSON.stringify({
+    type: 'speech',
+    roomId: roomId, // Use the UUID, not the code
+    text: textInput
+  }))
+
+  // Update transcript locally
+  setTranscript(textInput)
+  
+  // Clear input
+  setTextInput('')
+}
   
   // Cleanup on unmount
   useEffect(() => {
@@ -362,14 +359,14 @@ export default function GuidePage() {
 
                 {/* Text Input for Testing Without Microphone */}
                 <div className="mt-8 space-y-4">
-                    <h3 className="text-lg font-semibold">Send Text (Microphone Alternative)</h3>
+                    <h3 className="text-lg font-semibold text-gray-600">Send Text (Microphone Alternative)</h3>
                     <div className="flex space-x-2">
                         <input
                         type="text"
                         value={textInput}
                         onChange={(e) => setTextInput(e.target.value)}
                         placeholder="Type a message to translate..."
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 text-gray-600"
                         onKeyPress={(e) => e.key === 'Enter' && handleSendText()}
                         />
                         <button
@@ -388,7 +385,7 @@ export default function GuidePage() {
               {/* Transcript */}
               {transcript && (
                 <div className="p-4 bg-gray-50 rounded-lg">
-                  <h3 className="font-semibold mb-2">You are saying:</h3>
+                  <h3 className="font-semibold mb-2 text-black">You are saying:</h3>
                   <p className="text-gray-700">{transcript}</p>
                 </div>
               )}

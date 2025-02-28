@@ -1,7 +1,8 @@
+// app/api/ws/route.ts
 import { NextRequest } from 'next/server';
 import { Server as WebSocketServer } from 'ws';
-import { TranslationBridge } from '@/lib/services/TranslationBridge';
 import { mongoRoomStore } from '@/lib/store/mongoRoomStore';
+import { translateText } from '@/lib/services/ServerTranslation';
 
 const WS_PORT = 3002;
 
@@ -19,7 +20,7 @@ declare global {
   var websocketServer: {
     server: WebSocketServer | null;
     connections: Connection[];
-    translationBridges: Record<string, TranslationBridge>;
+    translationBridges: Record<string, any>;
   };
 }
 
@@ -32,11 +33,8 @@ if (!global.websocketServer) {
   };
 }
 
-// Use the global variables
-const { connections, translationBridges } = global.websocketServer;
-
 // Initialize or get WebSocket server - safer approach
-function getWebSocketServer(): WebSocketServer {
+function getWebSocketServer(): WebSocketServer | null {
   if (!global.websocketServer.server) {
     try {
       const server = new WebSocketServer({ port: WS_PORT });
@@ -49,6 +47,7 @@ function getWebSocketServer(): WebSocketServer {
         ws.on('message', async (message: any) => {
           try {
             const data = JSON.parse(message.toString());
+            console.log('WebSocket message received:', data);
             
             // Handle different message types
             switch (data.type) {
@@ -104,11 +103,12 @@ function getWebSocketServer(): WebSocketServer {
       
       if ((error as any).code === 'EADDRINUSE') {
         console.log(`Port ${WS_PORT} is already in use. Using existing connection.`);
+        // Don't set server to null here, we might be able to reuse it
       }
     }
   }
   
-  return global.websocketServer.server as WebSocketServer;
+  return global.websocketServer.server;
 }
 
 // Try to get the WebSocket server
@@ -148,11 +148,11 @@ async function handleJoin(ws: any, data: any) {
   // Update participant's socketId in the room if needed
   const participantInRoom = room.participants.find(p => p.id === participantId);
   if (participantInRoom) {
-    participantInRoom.socketId = ws.id || 'unknown'; // If ws has an id property
-    await mongoRoomStore.getRoom(roomId); // Refresh room data after update
+    participantInRoom.socketId = ws.id || 'unknown';
+    // No need to update MongoDB here as we're just tracking for this session
   }
   
-  connections.push(connection);
+  global.websocketServer.connections.push(connection);
   
   // Send confirmation
   ws.send(JSON.stringify({ 
@@ -183,11 +183,28 @@ async function handleSpeech(ws: any, data: any) {
   }
   
   // Find guide's connection
-  const guideConnection = connections.find(c => 
+  const guideConnection = global.websocketServer.connections.find(c => 
     c.roomId === roomId && c.role === 'guide' && c.ws === ws
   );
   
+  // If we can't find the guide connection by roomId (UUID), check if this is a room code
   if (!guideConnection) {
+    // Try to find the room by code first
+    const room = await mongoRoomStore.getRoomByCode(roomId);
+    if (room) {
+      // Check if this guide is connected to this room
+      const guideInRoom = global.websocketServer.connections.find(c =>
+        c.roomId === room.id && c.role === 'guide' && c.ws === ws
+      );
+      
+      if (guideInRoom) {
+        // Process the message using the actual room ID
+        await processGuideMessage(ws, room.id, text);
+        return;
+      }
+    }
+    
+    // If we still can't authorize, send an error
     ws.send(JSON.stringify({ 
       type: 'error', 
       message: 'Not authorized as guide for this room' 
@@ -195,6 +212,12 @@ async function handleSpeech(ws: any, data: any) {
     return;
   }
   
+  // Process the message if guide is authorized
+  await processGuideMessage(ws, roomId, text);
+}
+
+// Helper function to process guide messages
+async function processGuideMessage(ws: any, roomId: string, text: string) {
   // Verify the room exists
   const room = await mongoRoomStore.getRoom(roomId);
   if (!room || !room.active) {
@@ -206,7 +229,7 @@ async function handleSpeech(ws: any, data: any) {
   }
   
   // Get all tourists in the room
-  const tourists = connections.filter(c => 
+  const tourists = global.websocketServer.connections.filter(c => 
     c.roomId === roomId && c.role === 'tourist'
   );
   
@@ -217,40 +240,24 @@ async function handleSpeech(ws: any, data: any) {
     source: 'guide'
   });
   
+  console.log(`Processing message for ${tourists.length} tourists in room ${roomId}`);
+  
   // Translate for each tourist
   for (const tourist of tourists) {
     if (!tourist.preferredLanguage) continue;
     
     try {
-      // Get or create translation bridge for this language
-      const bridgeKey = `${roomId}-${tourist.preferredLanguage}`;
+      // Direct translation approach
+      console.log(`Translating to ${tourist.preferredLanguage} for tourist ${tourist.participantId}`);
+      const translation = await translateText(text, tourist.preferredLanguage);
       
-      if (!translationBridges[bridgeKey]) {
-        translationBridges[bridgeKey] = new TranslationBridge();
-        
-        // Set up event listeners
-        translationBridges[bridgeKey].on('translation', (translationData: any) => {
-          // Send to specific tourist
-          tourist.ws.send(JSON.stringify({
-            type: 'translation',
-            text: translationData.translation,
-            sourceLanguage: 'English', // Assuming guide speaks English
-            targetLanguage: tourist.preferredLanguage
-          }));
-        });
-        
-        translationBridges[bridgeKey].on('error', (err: any) => {
-          tourist.ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Translation failed',
-            details: err.message
-          }));
-        });
-      }
-      
-      // Send text for translation
-      const textBlob = new Blob([text], { type: 'text/plain' });
-      await translationBridges[bridgeKey].translate(textBlob, tourist.preferredLanguage);
+      // Send to specific tourist
+      tourist.ws.send(JSON.stringify({
+        type: 'translation',
+        text: translation,
+        sourceLanguage: 'English',
+        targetLanguage: tourist.preferredLanguage
+      }));
       
     } catch (error) {
       console.error(`Translation error for ${tourist.participantId}:`, error);
@@ -275,7 +282,7 @@ async function handleTouristMessage(ws: any, data: any) {
   }
   
   // Find tourist's connection
-  const touristConnection = connections.find(c => 
+  const touristConnection = global.websocketServer.connections.find(c => 
     c.roomId === roomId && c.role === 'tourist' && c.ws === ws
   );
   
@@ -308,14 +315,14 @@ async function handleTouristMessage(ws: any, data: any) {
 
 // Handle participant leaving
 async function handleLeave(ws: any) {
-  const connectionIndex = connections.findIndex(c => c.ws === ws);
+  const connectionIndex = global.websocketServer.connections.findIndex(c => c.ws === ws);
   
   if (connectionIndex === -1) return;
   
-  const { roomId, participantId, role } = connections[connectionIndex];
+  const { roomId, participantId, role } = global.websocketServer.connections[connectionIndex];
   
   // Remove from connections
-  connections.splice(connectionIndex, 1);
+  global.websocketServer.connections.splice(connectionIndex, 1);
   
   // Remove from room if still exists
   const room = await mongoRoomStore.getRoom(roomId);
@@ -335,50 +342,34 @@ async function handleLeave(ws: any) {
       participantCount: room.participants.length - 1 // Subtract the one that just left
     });
   }
-  
-  // Clean up translation bridges if this was the last tourist for a language
-  const languagesToCleanup = Object.keys(translationBridges)
-    .filter(key => key.startsWith(`${roomId}-`));
-    
-  for (const key of languagesToCleanup) {
-    const language = key.split('-')[1];
-    
-    // Check if any tourists still need this language
-    const stillNeeded = connections.some(c => 
-      c.roomId === roomId && 
-      c.role === 'tourist' && 
-      c.preferredLanguage === language
-    );
-    
-    if (!stillNeeded) {
-      translationBridges[key].disconnect();
-      delete translationBridges[key];
-    }
-  }
 }
 
 // Broadcast message to all participants in a room
 function broadcastToRoom(roomId: string, message: any, exceptParticipantId?: string) {
-    const roomConnections = global.websocketServer.connections.filter(c => 
-      c.roomId === roomId && 
-      (!exceptParticipantId || c.participantId !== exceptParticipantId)
-    );
-    
-    for (const connection of roomConnections) {
+  const roomConnections = global.websocketServer.connections.filter(c => 
+    c.roomId === roomId && 
+    (!exceptParticipantId || c.participantId !== exceptParticipantId)
+  );
+  
+  for (const connection of roomConnections) {
+    try {
       connection.ws.send(JSON.stringify(message));
+    } catch (error) {
+      console.error(`Error sending message to participant ${connection.participantId}:`, error);
     }
+  }
 }
 
 export async function GET(req: NextRequest) {
-    return new Response(JSON.stringify({
-      wsUrl: `ws://localhost:${WS_PORT}`,
-      activeConnections: global.websocketServer.connections.length,
-      activeRooms: Array.from(new Set(connections.map(c => c.roomId))).length,
-      registeredRooms: (await mongoRoomStore.getAllRooms()).filter(r => r.active).length,
-      serverActive: global.websocketServer.server !== null
-    }), {
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
+  return new Response(JSON.stringify({
+    wsUrl: `ws://localhost:${WS_PORT}`,
+    activeConnections: global.websocketServer.connections.length,
+    activeRooms: Array.from(new Set(global.websocketServer.connections.map(c => c.roomId))).length,
+    registeredRooms: (await mongoRoomStore.getAllRooms()).filter(r => r.active).length,
+    serverActive: global.websocketServer.server !== null
+  }), {
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  });
 }

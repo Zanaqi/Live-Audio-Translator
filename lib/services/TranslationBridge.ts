@@ -15,10 +15,17 @@ export class TranslationBridge extends EventEmitter {
   private async initializeConnection() {
     if (this.isConnecting) return;
     this.isConnecting = true;
-
+  
     try {
-      const response = await fetch('/api/translate');
+      // Use an absolute URL instead of a relative one
+      // In a Node.js environment (server-side), we need to use localhost
+      const baseUrl = typeof window !== 'undefined' 
+        ? window.location.origin
+        : 'http://localhost:3000';
+      
+      const response = await fetch(`${baseUrl}/api/translate`);
       const { wsUrl } = await response.json();
+      
       this.connect(wsUrl);
     } catch (error) {
       console.error('Failed to get WebSocket server info:', error);

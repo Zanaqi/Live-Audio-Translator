@@ -274,7 +274,7 @@ export default function JoinPage() {
         {!isJoined ? (
           /* Join Form */
           <div className="p-6 space-y-4">
-            <h2 className="text-xl font-semibold">Join a Tour</h2>
+            <h2 className="text-xl font-semibold text-black">Join a Tour</h2>
             
             <div>
               <label htmlFor="roomCode" className="block text-sm font-medium text-gray-700 mb-1">
@@ -291,13 +291,13 @@ export default function JoinPage() {
                   }
                 }}
                 placeholder="Enter 6-digit code"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 text-gray-600"
               />
             </div>
             
             {roomName && (
               <div className="p-3 bg-teal-50 text-teal-700 rounded-md">
-                Found tour: <span className="font-semibold">{roomName}</span> ({participants} participants)
+                Found tour: <span className="font-semibold text-gray-600">{roomName}</span> ({participants} participants)
               </div>
             )}
             
@@ -311,7 +311,7 @@ export default function JoinPage() {
                 value={touristName}
                 onChange={(e) => setTouristName(e.target.value)}
                 placeholder="Enter your name"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 text-gray-600"
               />
             </div>
             
@@ -323,7 +323,7 @@ export default function JoinPage() {
                 id="preferredLanguage"
                 value={preferredLanguage}
                 onChange={(e) => setPreferredLanguage(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 text-gray-600"
               >
                 <option value="Chinese">Chinese (Mandarin)</option>
                 <option value="French">French</option>
@@ -353,7 +353,7 @@ export default function JoinPage() {
           <div className="p-6 space-y-6">
             <div className="flex justify-between items-center p-4 bg-teal-50 rounded-lg">
               <div>
-                <h2 className="text-xl font-semibold">{roomName}</h2>
+                <h2 className="text-xl font-semibold text-black">{roomName}</h2>
                 <div className="flex items-center space-x-2 text-gray-600">
                   <Users size={16} />
                   <span>{participants} participants</span>
@@ -384,7 +384,7 @@ export default function JoinPage() {
 
             {/* Message History */}
             <div className="space-y-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-4">
-                <h3 className="font-semibold text-lg">Message History</h3>
+                <h3 className="font-semibold text-lg text-gray-600">Message History</h3>
                 
                 {originalMessages.length === 0 ? (
                 <p className="text-gray-500 italic">No messages yet. Wait for the guide to speak.</p>
@@ -434,7 +434,7 @@ export default function JoinPage() {
 
         {/* Debug Section - only visible during development */}
         {process.env.NODE_ENV === 'development' && (
-        <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+        <div className="mt-4 p-4 bg-gray-100 rounded-lg text-gray-600">
             <h3 className="font-semibold mb-2">Debug Info</h3>
             <p>Room ID: {roomId}</p>
             <p>WebSocket State: {wsRef.current ? wsRef.current.readyState : 'Not connected'}</p>
