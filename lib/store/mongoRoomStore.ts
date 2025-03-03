@@ -1,3 +1,4 @@
+// lib/store/mongoRoomStore.ts
 import connectToDatabase from '../db/mongodb';
 import Room, { IRoom, IParticipant } from '../db/models/Room';
 import { v4 as uuidv4 } from 'uuid';
@@ -62,6 +63,41 @@ export class MongoRoomStore {
     );
     
     return result.modifiedCount > 0;
+  }
+
+  public async updateRoomGuide(roomId: string, guideId: string): Promise<boolean> {
+    await connectToDatabase();
+    
+    // First, update the room's guideId field
+    const roomResult = await Room.updateOne(
+      { id: roomId },
+      { $set: { guideId: guideId } }
+    );
+    
+    // Then find any existing guide participant and update their ID
+    // or add a new guide participant if none exists
+    const room = await Room.findOne({ id: roomId });
+    
+    if (!room) return false;
+    
+    const existingGuideIndex = room.participants.findIndex(p => p.role === 'guide');
+    
+    if (existingGuideIndex >= 0) {
+      // Update existing guide participant
+      room.participants[existingGuideIndex].id = guideId;
+    } else {
+      // Add new guide participant
+      room.participants.push({
+        id: guideId,
+        roomId: roomId,
+        role: 'guide',
+        name: 'Tour Guide'
+      });
+    }
+    
+    await room.save();
+    
+    return true;
   }
 
   public async removeParticipant(roomId: string, participantId: string): Promise<boolean> {

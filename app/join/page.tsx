@@ -3,81 +3,216 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Volume2, VolumeX, Languages, Users } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
+import { Volume2, VolumeX, Languages, Users, RefreshCw } from 'lucide-react'
+import { useSession } from '@/lib/context/SessionContext'
+import { wsManager } from '@/lib/utils/WebSocketManager'
 
 export default function JoinPage() {
+  // Access session context
+  const { touristSession, saveTouristSession, clearTouristSession, ensureUserId } = useSession()
+  
+  // URL parameters
   const searchParams = useSearchParams()
+  
+  // Local state
   const [roomCode, setRoomCode] = useState<string>('')
   const [touristName, setTouristName] = useState('')
   const [preferredLanguage, setPreferredLanguage] = useState('French')
-  const [isJoined, setIsJoined] = useState(false)
   const [roomName, setRoomName] = useState('')
   const [transcript, setTranscript] = useState('')
   const [translation, setTranslation] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [participants, setParticipants] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [touristId, setTouristId] = useState('')
-  const [roomId, setRoomId] = useState('')
   const [originalMessages, setOriginalMessages] = useState<string[]>([])
   const [translations, setTranslations] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [roomInfo, setRoomInfo] = useState<any>(null)
+  const [wsConnected, setWsConnected] = useState(false)
   
-  const wsRef = useRef<WebSocket | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   
-  // Initialize tourist ID and check for room code in URL
+  // Set up WebSocket event listeners
   useEffect(() => {
-    // Get tourist ID from localStorage or generate new one
-    const storedTouristId = localStorage.getItem('touristId')
-    if (storedTouristId) {
-      setTouristId(storedTouristId)
-    } else {
-      const newTouristId = uuidv4()
-      localStorage.setItem('touristId', newTouristId)
-      setTouristId(newTouristId)
-    }
+    // Handle WebSocket messages
+    const handleMessage = (data: any) => {
+      console.log('Received message:', data);
+      
+      switch (data.type) {
+        case 'joined':
+          console.log('Successfully joined room, participant count:', data.participantCount);
+          setParticipants(data.participantCount);
+          setError(null);
+          break;
+          
+        case 'participant_joined':
+        case 'participant_left':
+          console.log('Participant count update:', data.participantCount);
+          setParticipants(data.participantCount);
+          break;
+          
+        case 'transcript':
+          // Keep a history of original messages
+          setOriginalMessages(prev => [...prev, data.text]);
+          // Also update the current transcript for display
+          setTranscript(data.text);
+          break;
+          
+        case 'translation':
+          console.log('Translation received:', data);
+          // Keep a history of translations
+          setTranslations(prev => [...prev, data.text]);
+          // Update the current translation
+          setTranslation(data.text);
+          break;
+          
+        case 'error':
+          console.error('WebSocket error:', data.message);
+          setError(data.message);
+          
+          // If room not found or inactive, clear session
+          if (
+            data.message === 'Room not found' || 
+            data.message === 'Room not found or inactive' ||
+            data.message === 'Not authorized as tourist for this room'
+          ) {
+            clearTouristSession();
+          }
+          break;
+      }
+    };
     
-    // Check for room code in URL
-    const code = searchParams.get('code')
-    if (code) {
-      setRoomCode(code)
-      checkRoom(code)
+    // Add event listeners
+    wsManager.on('message', handleMessage);
+    
+    // Handle connection state changes
+    wsManager.on('connected', () => {
+      console.log('WebSocket connected');
+      setWsConnected(true);
+      setError(null);
+    });
+    
+    wsManager.on('disconnected', () => {
+      console.log('WebSocket disconnected');
+      setWsConnected(false);
+    });
+    
+    wsManager.on('error', (err) => {
+      console.error('WebSocket error event:', err);
+      setError(err.message || 'Connection error');
+    });
+    
+    wsManager.on('reconnecting', () => {
+      console.log('Reconnecting...');
+      setError('Reconnecting...');
+    });
+    
+    // Clean up event listeners on unmount
+    return () => {
+      wsManager.removeListener('message', handleMessage);
+      wsManager.removeAllListeners('connected');
+      wsManager.removeAllListeners('disconnected');
+      wsManager.removeAllListeners('error');
+      wsManager.removeAllListeners('reconnecting');
     }
-  }, [searchParams])
+  }, [clearTouristSession]);
+  
+  // Initialize from URL params or session
+  useEffect(() => {
+    // First check if we have a session already
+    if (touristSession) {
+      console.log('Found tourist session, connecting:', touristSession);
+      setRoomCode(touristSession.roomCode);
+      setTouristName(touristSession.touristName);
+      setPreferredLanguage(touristSession.preferredLanguage);
+      setRoomName(touristSession.roomName);
+      
+      // Connect to WebSocket
+      connectToSession();
+    } else {
+      // If no session, check URL for room code
+      const code = searchParams.get('code');
+      if (code) {
+        setRoomCode(code);
+        checkRoom(code);
+      }
+    }
+  }, [searchParams, touristSession]);
+  
+  // Update connection status when wsManager connection changes
+  useEffect(() => {
+    setWsConnected(wsManager.isConnected());
+    
+    // Check every second for connection status
+    const interval = setInterval(() => {
+      setWsConnected(wsManager.isConnected());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Connect to existing session
+  const connectToSession = async () => {
+    if (!touristSession) return;
+    
+    try {
+      await wsManager.connect({
+        roomId: touristSession.roomId,
+        participantId: touristSession.touristId,
+        role: 'tourist',
+        preferredLanguage: touristSession.preferredLanguage,
+        roomCode: touristSession.roomCode,
+        touristName: touristSession.touristName
+      });
+    } catch (error) {
+      console.error('Error connecting to session:', error);
+      setError('Failed to connect to room. Please try again.');
+    }
+  };
   
   // Check if room exists
   const checkRoom = async (code: string) => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      const response = await fetch(`/api/rooms?code=${code}`)
+      const response = await fetch(`/api/rooms?code=${code}`);
       
       if (!response.ok) {
         if (response.status === 404) {
-          setError('Room not found. Please check the code and try again.')
-          return
+          setError('Room not found. Please check the code and try again.');
+          return;
         }
-        throw new Error('Failed to check room')
+        throw new Error('Failed to check room');
       }
       
-      const data = await response.json()
-      setRoomName(data.name)
-      setParticipants(data.participantCount)
-      setError(null)
+      const data = await response.json();
+      setRoomName(data.name);
+      setParticipants(data.participantCount);
+      setRoomInfo(data);
       
     } catch (error) {
-      console.error('Error checking room:', error)
-      setError('Failed to check room. Please try again.')
+      console.error('Error checking room:', error);
+      setError('Failed to check room. Please try again.');
+    } finally {
+      setLoading(false);
     }
-  }
+  };
   
   // Join the room
   const joinRoom = async () => {
     if (!roomCode.trim() || !touristName.trim()) {
-      setError('Room code and your name are required')
-      return
+      setError('Room code and your name are required');
+      return;
     }
     
+    setLoading(true);
+    setError(null);
+    
     try {
+      // Ensure user has ID
+      const userId = ensureUserId();
+      
       const response = await fetch('/api/rooms/join', {
         method: 'POST',
         headers: {
@@ -88,179 +223,145 @@ export default function JoinPage() {
           touristName,
           preferredLanguage
         }),
-      })
+      });
       
       if (!response.ok) {
         if (response.status === 404) {
-          setError('Room not found. Please check the code and try again.')
-          return
+          setError('Room not found. Please check the code and try again.');
+          return;
         }
-        throw new Error('Failed to join room')
+        throw new Error('Failed to join room');
       }
       
-      const data = await response.json()
-      setRoomId(data.roomId)
-      setIsJoined(true)
-      setError(null)
+      const data = await response.json();
+      console.log('Join room response:', data);
+      
+      // Save session
+      const sessionData = {
+        roomId: data.roomId,
+        roomCode,
+        roomName: data.roomName || roomName,
+        touristId: userId,
+        touristName,
+        preferredLanguage
+      };
+      
+      saveTouristSession(sessionData);
       
       // Connect to WebSocket
-      connectWebSocket(data.roomId)
+      await wsManager.connect({
+        roomId: data.roomId,
+        participantId: userId,
+        role: 'tourist',
+        roomCode: roomCode,
+        preferredLanguage,
+        touristName
+      });
       
     } catch (error) {
-      console.error('Error joining room:', error)
-      setError('Failed to join room. Please try again.')
+      console.error('Error joining room:', error);
+      setError('Failed to join room. Please try again.');
+    } finally {
+      setLoading(false);
     }
-  }
+  };
   
-  // Connect to WebSocket server
-  const connectWebSocket = async (roomId: string) => {
+  // Leave the room
+  const leaveRoom = () => {
+    // Disconnect WebSocket
+    wsManager.disconnect();
+    
+    // Clear session
+    clearTouristSession();
+    
+    // Reset state
+    setTranscript('');
+    setTranslation('');
+    setOriginalMessages([]);
+    setTranslations([]);
+    setError(null);
+  };
+  
+  // Manual reconnect
+  const handleReconnect = async () => {
+    if (!touristSession) return;
+    
+    setError('Reconnecting...');
+    
     try {
-      const response = await fetch('/api/ws')
-      const { wsUrl } = await response.json()
-      
-      wsRef.current = new WebSocket(wsUrl)
-      
-      wsRef.current.onopen = () => {
-        // Join the room as tourist
-        wsRef.current?.send(JSON.stringify({
-          type: 'join',
-          roomId,
-          participantId: touristId,
-          role: 'tourist',
-          preferredLanguage
-        }))
-      }
-      
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          console.log('WebSocket message received:', data) // Debug log
-          
-          switch (data.type) {
-            case 'joined':
-              console.log('Successfully joined room as tourist')
-              break
-              
-            case 'participant_joined':
-            case 'participant_left':
-              setParticipants(data.participantCount)
-              break
-              
-            case 'transcript':
-              // Keep a history of original messages
-              setOriginalMessages(prev => [...prev, data.text])
-              // Also update the current transcript for display
-              setTranscript(data.text)
-              break
-              
-            case 'translation':
-              console.log('Translation received:', data) // Debug log
-              // Keep a history of translations
-              setTranslations(prev => [...prev, data.text])
-              // Update the current translation
-              setTranslation(data.text)
-              // Speak if enabled
-            //   if (autoSpeak) {
-            //     speakTranslation(data.text)
-            //   }
-              break
-              
-            case 'error':
-              setError(data.message)
-              break
-              
-            default:
-              console.log('Unknown message type:', data.type)
-          }
-          
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error)
-        }
-      }
-      
-      wsRef.current.onclose = () => {
-        console.log('WebSocket connection closed')
-      }
-      
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        setError('Connection error. Please refresh and try again.')
-      }
-      
+      await connectToSession();
     } catch (error) {
-      console.error('Error connecting to WebSocket:', error)
-      setError('Failed to connect. Please refresh and try again.')
+      console.error('Failed to reconnect:', error);
+      setError('Failed to reconnect. Please try again.');
     }
-  }
+  };
   
   // Text-to-speech for translation
-  const speakTranslation = (text: string) => {
-    if (!text) return
+  const speakTranslation = () => {
+    if (!translation) return;
     
     if ('speechSynthesis' in window) {
       // Stop any ongoing speech
-      window.speechSynthesis.cancel()
+      window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(text)
+      const utterance = new SpeechSynthesisUtterance(translation);
       
       // Set language based on preferred language
       switch (preferredLanguage) {
         case 'French':
-          utterance.lang = 'fr-FR'
-          break
+          utterance.lang = 'fr-FR';
+          break;
         case 'Spanish':
-          utterance.lang = 'es-ES'
-          break
+          utterance.lang = 'es-ES';
+          break;
         case 'German':
-          utterance.lang = 'de-DE'
-          break
+          utterance.lang = 'de-DE';
+          break;
         case 'Italian':
-          utterance.lang = 'it-IT'
-          break
+          utterance.lang = 'it-IT';
+          break;
         case 'Japanese':
-          utterance.lang = 'ja-JP'
-          break
+          utterance.lang = 'ja-JP';
+          break;
         case 'Chinese':
-          utterance.lang = 'zh-CN'
-          break
+          utterance.lang = 'zh-CN';
+          break;
         default:
-          utterance.lang = 'en-US'
+          utterance.lang = 'en-US';
       }
       
-      // Speak the translation
-      window.speechSynthesis.speak(utterance)
-      
-      // Update UI state
-      setIsPlaying(true)
+      utterance.onstart = () => {
+        setIsPlaying(true);
+      };
       
       utterance.onend = () => {
-        setIsPlaying(false)
-      }
+        setIsPlaying(false);
+      };
+      
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setError('Text-to-speech is not supported in your browser.');
     }
-  }
+  };
   
   // Toggle audio playback
   const togglePlayback = () => {
     if (isPlaying) {
-      window.speechSynthesis.cancel()
-      setIsPlaying(false)
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
     } else {
-      speakTranslation(translation)
+      speakTranslation();
     }
-  }
+  };
   
-  // Cleanup on unmount
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-      
       if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel()
+        window.speechSynthesis.cancel();
       }
-    }
-  }, [])
+    };
+  }, []);
   
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -271,7 +372,7 @@ export default function JoinPage() {
           <p className="text-teal-100">Join a tour and get real-time translations</p>
         </div>
         
-        {!isJoined ? (
+        {!touristSession ? (
           /* Join Form */
           <div className="p-6 space-y-4">
             <h2 className="text-xl font-semibold text-black">Join a Tour</h2>
@@ -285,9 +386,9 @@ export default function JoinPage() {
                 type="text"
                 value={roomCode}
                 onChange={(e) => {
-                  setRoomCode(e.target.value)
+                  setRoomCode(e.target.value);
                   if (e.target.value.length === 6) {
-                    checkRoom(e.target.value)
+                    checkRoom(e.target.value);
                   }
                 }}
                 placeholder="Enter 6-digit code"
@@ -295,9 +396,9 @@ export default function JoinPage() {
               />
             </div>
             
-            {roomName && (
+            {roomInfo && (
               <div className="p-3 bg-teal-50 text-teal-700 rounded-md">
-                Found tour: <span className="font-semibold text-gray-600">{roomName}</span> ({participants} participants)
+                Found tour: <span className="font-semibold text-gray-600">{roomInfo.name}</span> ({roomInfo.participantCount} participants)
               </div>
             )}
             
@@ -342,10 +443,10 @@ export default function JoinPage() {
             
             <button
               onClick={joinRoom}
-              disabled={!roomCode || !touristName}
-              className="w-full px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              disabled={loading || !roomCode || !touristName}
+              className="w-full px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-teal-300 disabled:cursor-not-allowed"
             >
-              Join Tour
+              {loading ? 'Joining...' : 'Join Tour'}
             </button>
           </div>
         ) : (
@@ -353,7 +454,7 @@ export default function JoinPage() {
           <div className="p-6 space-y-6">
             <div className="flex justify-between items-center p-4 bg-teal-50 rounded-lg">
               <div>
-                <h2 className="text-xl font-semibold text-black">{roomName}</h2>
+                <h2 className="text-xl font-semibold text-black">{touristSession.roomName}</h2>
                 <div className="flex items-center space-x-2 text-gray-600">
                   <Users size={16} />
                   <span>{participants} participants</span>
@@ -362,8 +463,28 @@ export default function JoinPage() {
               
               <div className="flex items-center space-x-2 px-3 py-1 bg-teal-100 text-teal-700 rounded-full">
                 <Languages size={16} />
-                <span>{preferredLanguage}</span>
+                <span>{touristSession.preferredLanguage}</span>
               </div>
+            </div>
+            
+            {/* Connection status with reconnect button */}
+            <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm text-gray-600">
+                  {wsConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              
+              {!wsConnected && (
+                <button 
+                  onClick={handleReconnect}
+                  className="flex items-center space-x-1 px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600"
+                >
+                  <RefreshCw size={14} />
+                  <span>Reconnect</span>
+                </button>
+              )}
             </div>
             
             {/* Original Text */}
@@ -376,49 +497,58 @@ export default function JoinPage() {
             
             {/* Translation */}
             <div className="space-y-2">
-              <h3 className="text-sm font-medium text-gray-500">Translation ({preferredLanguage})</h3>
+              <h3 className="text-sm font-medium text-gray-500">Translation ({touristSession?.preferredLanguage})</h3>
               <div className="p-4 bg-teal-50 rounded-lg min-h-[100px]">
-                <p className="text-gray-700">{translation || 'Translation will appear here...'}</p>
+                {loading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
+                  </div>
+                ) : (
+                  <p className="text-gray-700">{translation || 'Translation will appear here...'}</p>
+                )}
               </div>
             </div>
 
             {/* Message History */}
-            <div className="space-y-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-4">
+            {originalMessages.length > 0 && (
+              <div className="space-y-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-4">
                 <h3 className="font-semibold text-lg text-gray-600">Message History</h3>
                 
-                {originalMessages.length === 0 ? (
-                <p className="text-gray-500 italic">No messages yet. Wait for the guide to speak.</p>
-                ) : (
-                originalMessages.map((message, index) => (
-                    <div key={index} className="mb-4 pb-4 border-b border-gray-100">
+                {originalMessages.map((message, index) => (
+                  <div key={index} className="mb-4 pb-4 border-b border-gray-100">
                     <div className="bg-gray-50 p-3 rounded-lg mb-2">
-                        <p className="text-xs text-gray-500">Original (English):</p>
-                        <p className="text-gray-700">{message}</p>
+                      <p className="text-xs text-gray-500">Original (English):</p>
+                      <p className="text-gray-700">{message}</p>
                     </div>
                     
                     {translations[index] && (
-                        <div className="bg-teal-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500">Translation ({preferredLanguage}):</p>
+                      <div className="bg-teal-50 p-3 rounded-lg">
+                        <p className="text-xs text-gray-500">Translation ({touristSession.preferredLanguage}):</p>
                         <p className="text-gray-700">{translations[index]}</p>
-                        </div>
+                      </div>
                     )}
-                    </div>
-                ))
-                )}
-            </div>
+                  </div>
+                ))}
+              </div>
+            )}
             
-            {/* Audio Controls */}
-            <div className="flex justify-center">
+            {/* Controls */}
+            <div className="flex justify-center space-x-4">
               <button
                 onClick={togglePlayback}
                 className={`p-4 rounded-full ${
-                  isPlaying 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : 'bg-teal-500 hover:bg-teal-600'
+                  isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-teal-500 hover:bg-teal-600'
                 } text-white transition-colors`}
                 disabled={!translation}
               >
                 {isPlaying ? <VolumeX size={24} /> : <Volume2 size={24} />}
+              </button>
+              
+              <button
+                onClick={leaveRoom}
+                className="p-4 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors"
+              >
+                <span className="text-sm">Leave Tour</span>
               </button>
             </div>
             
@@ -429,29 +559,14 @@ export default function JoinPage() {
                 {error}
               </div>
             )}
+            
+            {originalMessages.length === 0 && (
+              <div className="p-3 bg-blue-50 text-blue-700 rounded-md">
+                <p className="text-center">Waiting for the guide to start speaking...</p>
+                <p className="text-center text-sm mt-1">You'll see translations here once they begin.</p>
+              </div>
+            )}
           </div>
-        )}
-
-        {/* Debug Section - only visible during development */}
-        {process.env.NODE_ENV === 'development' && (
-        <div className="mt-4 p-4 bg-gray-100 rounded-lg text-gray-600">
-            <h3 className="font-semibold mb-2">Debug Info</h3>
-            <p>Room ID: {roomId}</p>
-            <p>WebSocket State: {wsRef.current ? wsRef.current.readyState : 'Not connected'}</p>
-            <p>Messages Received: {originalMessages.length}</p>
-            <p>Translations Received: {translations.length}</p>
-            <button 
-            onClick={() => console.log('Current state:', { 
-                roomId, 
-                originalMessages, 
-                translations, 
-                wsRef: wsRef.current?.readyState 
-            })}
-            className="mt-2 px-2 py-1 bg-gray-200 text-xs rounded"
-            >
-            Log Debug Info
-            </button>
-        </div>
         )}
                 
         {/* Footer */}
