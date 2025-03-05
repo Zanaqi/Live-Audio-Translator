@@ -7,8 +7,8 @@ export interface ConnectionConfig {
   role: 'guide' | 'tourist';
   roomCode?: string;
   preferredLanguage?: string;
-  touristName?: string; // Added to ensure we send all needed data
-  guideName?: string; // Added to ensure we send all needed data
+  touristName?: string;
+  guideName?: string;
 }
 
 class WebSocketManager extends EventEmitter {
@@ -20,6 +20,8 @@ class WebSocketManager extends EventEmitter {
   private readonly maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private initialized: boolean = false;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
   constructor() {
     super();
@@ -66,11 +68,9 @@ class WebSocketManager extends EventEmitter {
       
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
-        console.log('WebSocket connected, sending join message');
         this.emit('connected');
-        
-        // Send join message with complete config
         this.sendJoinMessage();
+        this.startHeartbeat(); // Start heartbeat when connected
       };
       
       this.ws.onmessage = (event) => {
@@ -91,10 +91,9 @@ class WebSocketManager extends EventEmitter {
       };
       
       this.ws.onclose = (event) => {
-        console.log('WebSocket closed, code:', event.code, 'reason:', event.reason);
+        this.stopHeartbeat(); // Stop heartbeat on close
         this.emit('disconnected');
         
-        // Try to reconnect if this wasn't a deliberate disconnect
         if (this.config && !this.reconnecting) {
           this.scheduleReconnect();
         }
@@ -105,10 +104,56 @@ class WebSocketManager extends EventEmitter {
         this.emit('error', { message: 'WebSocket connection error' });
       };
     } catch (error) {
+      this.stopHeartbeat(); // Ensure heartbeat is stopped on error
       console.error('Error creating WebSocket:', error);
       this.emit('error', { message: 'Failed to create WebSocket connection' });
       throw error;
     }
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.sendMessage({ type: 'ping' });
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  private messageQueue: any[] = [];
+  private isProcessingQueue = false;
+
+  private async processMessageQueue(): Promise<void> {
+    if (this.isProcessingQueue || this.messageQueue.length === 0) return;
+    
+    this.isProcessingQueue = true;
+    
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue[0];
+      
+      try {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify(message));
+          this.messageQueue.shift(); // Remove sent message
+        } else {
+          break; // Stop if connection is not open
+        }
+      } catch (error) {
+        console.error('Error sending message:', error);
+        break;
+      }
+      
+      // Add small delay between messages
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    this.isProcessingQueue = false;
   }
   
   private sendJoinMessage(): void {
@@ -135,20 +180,28 @@ class WebSocketManager extends EventEmitter {
   
   sendMessage(message: any): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.error('Cannot send message - WebSocket not connected');
-      this.emit('error', { message: 'WebSocket is not connected' });
+      // Queue message for later if not connected
+      this.messageQueue.push(message);
       return false;
     }
     
     try {
-      this.ws.send(JSON.stringify(message));
+      if (this.messageQueue.length > 0) {
+        // Add to queue if there are pending messages
+        this.messageQueue.push(message);
+        this.processMessageQueue();
+      } else {
+        // Send immediately if no pending messages
+        this.ws.send(JSON.stringify(message));
+      }
       return true;
     } catch (error) {
       console.error('Error sending message:', error);
-      this.emit('error', { message: 'Failed to send message' });
+      this.messageQueue.push(message);
       return false;
     }
   }
+
   
   disconnect(): void {
     if (this.reconnectTimeout) {
@@ -165,29 +218,35 @@ class WebSocketManager extends EventEmitter {
     }
   }
   
+  // Add automatic reconnection improvements
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.emit('reconnect_failed', { message: 'Maximum reconnection attempts reached' });
+      this.emit('reconnect_failed', { 
+        message: 'Maximum reconnection attempts reached',
+        shouldReload: true // Signal that page should reload
+      });
       return;
     }
-    
+
     this.reconnecting = true;
     
-    // Exponential backoff for reconnect attempts
-    const delay = Math.min(1000 * (2 ** this.reconnectAttempts), 30000);
-    console.log(`Scheduling reconnect attempt ${this.reconnectAttempts + 1} in ${delay}ms`);
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
     
     this.reconnectTimeout = setTimeout(async () => {
       this.reconnectAttempts++;
-      this.emit('reconnecting', { attempt: this.reconnectAttempts });
+      this.emit('reconnecting', { 
+        attempt: this.reconnectAttempts,
+        maxAttempts: this.maxReconnectAttempts
+      });
       
       try {
         if (this.config) {
           await this.connect(this.config);
+          // Process any queued messages after reconnection
+          this.processMessageQueue();
         }
       } catch (error) {
         console.error('Reconnection failed:', error);
-        // Try again if we haven't reached the limit
         this.scheduleReconnect();
       } finally {
         this.reconnecting = false;
@@ -215,6 +274,15 @@ class WebSocketManager extends EventEmitter {
       text,
       language
     });
+  }
+
+  // Add connection status check
+  checkConnection(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendMessage({ type: 'ping' });
+    } else if (!this.reconnecting) {
+      this.scheduleReconnect();
+    }
   }
   
   // Check if connected

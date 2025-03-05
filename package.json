@@ -9,8 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "chinese-converter": "^0.0.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "events": "^3.3.0",
+    "jose": "^6.0.8",
+    "jsonwebtoken": "^9.0.2",
     "lodash": "^4.x.x",
     "lucide-react": "^0.475.0",
     "mongodb": "^6.13.1",
@@ -21,12 +26,17 @@
     "react": "latest",
     "react-dom": "latest",
     "react-qr-code": "^2.0.15",
+    "shadcn-ui": "^0.9.5",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
     "webpack": "^5.97.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/events": "^3.0.3",
+    "@types/jsonwebtoken": "^9.0.9",
     "@types/lodash": "^4.17.15",
     "@types/node": "^22.13.1",
     "@types/react": "latest",

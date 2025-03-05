@@ -1,13 +1,40 @@
 // app/page.tsx
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Mic, Headphones, Languages, Globe } from 'lucide-react'
+import { useAuth } from '@/lib/context/AuthContext'
 
 export default function Home() {
   const [roomCode, setRoomCode] = useState('')
-  
+  const router = useRouter()
+  const { user, loading } = useAuth()
+
+  const handleGuideClick = () => {
+    if (user && user.role === 'guide') {
+      router.push('/guide')
+    } else {
+      router.push('/login?from=/guide')
+    }
+  }
+
+  const handleTouristClick = () => {
+    if (user && user.role === 'tourist') {
+      router.push(roomCode ? `/join?code=${roomCode}` : '/join')
+    } else {
+      router.push('/login?from=' + (roomCode ? `/join?code=${roomCode}` : '/join'))
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-100 to-white p-4">
       <div className="max-w-6xl mx-auto pt-10">
@@ -54,12 +81,12 @@ export default function Home() {
                 </li>
               </ul>
               
-              <Link 
-                href="/guide" 
-                className="block w-full text-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+              <button
+                onClick={handleGuideClick}
+                className="w-full text-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
               >
                 Start as Tour Guide
-              </Link>
+              </button>
             </div>
           </div>
           
@@ -104,12 +131,12 @@ export default function Home() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 text-gray-600"
                 />
                 
-                <Link 
-                  href={roomCode ? `/join?code=${roomCode}` : '/join'}
-                  className="block w-full text-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                <button
+                  onClick={handleTouristClick}
+                  className="w-full text-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
                 >
                   Join as Tourist
-                </Link>
+                </button>
               </div>
             </div>
           </div>

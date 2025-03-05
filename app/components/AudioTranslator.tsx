@@ -1,13 +1,13 @@
-'use client'
-
-import { useState, useEffect, useRef } from 'react'
-import { TranslationBridge } from '@/lib/services/TranslationBridge'
-import { Mic, MicOff } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react';
+import { AudioProcessor } from '@/lib/utils/audioUtils';
+import { performanceMonitor } from '@/lib/utils/performanceMonitor';
+import { Mic, MicOff, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface AudioTranslatorProps {
-  targetLanguage: string
-  onTranscriptChange?: (transcript: string) => void
-  onTranslationChange?: (translation: string) => void
+  targetLanguage: string;
+  onTranscriptChange?: (transcript: string) => void;
+  onTranslationChange?: (translation: string) => void;
 }
 
 export default function AudioTranslator({ 
@@ -15,230 +15,175 @@ export default function AudioTranslator({
   onTranscriptChange,
   onTranslationChange 
 }: AudioTranslatorProps) {
-  const [isRecording, setIsRecording] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [audioLevel, setAudioLevel] = useState(0)
-  const [currentWord, setCurrentWord] = useState('')
-  const [isVoiceDetected, setIsVoiceDetected] = useState(false)
-  const [isBrowser, setIsBrowser] = useState(false)
+  const [isRecording, setIsRecording] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [isVoiceDetected, setIsVoiceDetected] = useState(false);
+  const [currentWord, setCurrentWord] = useState('');
+  const [isBrowser, setIsBrowser] = useState(false);
   
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const mediaStreamRef = useRef<MediaStream | null>(null)
-  const processorRef = useRef<ScriptProcessorNode | null>(null)
-  const bridgeRef = useRef<TranslationBridge | null>(null)
-  const recognitionRef = useRef<any>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const animationFrameRef = useRef<number | null>(null)
+  const audioProcessorRef = useRef<AudioProcessor | null>(null);
+  const recognitionRef = useRef<any>(null);
 
-  // Check if we're in the browser on mount
+  // Check if browser is supported
   useEffect(() => {
-    setIsBrowser(true)
-  }, [])
+    setIsBrowser(true);
+    
+    // Check browser compatibility
+    if (typeof window !== 'undefined') {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Your browser does not support audio recording');
+      }
+      if (!('webkitSpeechRecognition' in window)) {
+        setError('Your browser does not support speech recognition');
+      }
+    }
+  }, []);
 
   const startRecording = async () => {
-    if (!isBrowser) return
+    if (!isBrowser) return;
 
     try {
-      // Initialize audio context
-      audioContextRef.current = new AudioContext()
-      
-      // Get microphone stream
-      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      })
+      // Initialize audio processor
+      audioProcessorRef.current = new AudioProcessor({
+        sampleRate: 16000,
+        noiseThreshold: 0.01,
+        silenceThreshold: 0.02,
+        minSpeechDuration: 300
+      });
+
+      await audioProcessorRef.current.initialize();
+
+      // Set up audio processor callbacks
+      audioProcessorRef.current.setCallbacks({
+        onSpeechStart: () => setIsVoiceDetected(true),
+        onSpeechEnd: () => setIsVoiceDetected(false),
+        onAudioLevel: (level) => {
+          setAudioLevel(level * 100);
+          performanceMonitor.recordAudioQuality(level * 5); // Convert to MOS scale
+        }
+      });
 
       // Initialize speech recognition
       if ('webkitSpeechRecognition' in window) {
-        const SpeechRecognition = (window as any).webkitSpeechRecognition
-        recognitionRef.current = new SpeechRecognition()
-        recognitionRef.current.continuous = true
-        recognitionRef.current.interimResults = true
+        const SpeechRecognition = window.webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
 
         recognitionRef.current.onstart = () => {
-          setIsRecording(true)
-        }
-
-        recognitionRef.current.onaudiostart = () => {
-          setIsVoiceDetected(true)
-        }
-
-        recognitionRef.current.onaudioend = () => {
-          setIsVoiceDetected(false)
-        }
+          setIsRecording(true);
+          setError(null);
+        };
 
         recognitionRef.current.onresult = (event: any) => {
+          const startTime = performance.now();
+          
           const transcript = Array.from(event.results)
             .map((result: any) => result[0].transcript)
-            .join('')
+            .join('');
           
           // Update current word being spoken
-          const currentResult = event.results[event.results.length - 1]
+          const currentResult = event.results[event.results.length - 1];
           if (!currentResult.isFinal) {
-            setCurrentWord(currentResult[0].transcript)
+            setCurrentWord(currentResult[0].transcript);
           } else {
-            setCurrentWord('')
+            setCurrentWord('');
+            // Measure latency
+            const endTime = performance.now();
+            performanceMonitor.recordLatency(startTime, endTime);
           }
 
-          onTranscriptChange?.(transcript)
-
-          // Initialize translation bridge if needed
-          if (!bridgeRef.current) {
-            bridgeRef.current = new TranslationBridge()
-            
-            bridgeRef.current.on('translation', (data: any) => {
-              onTranslationChange?.(data.translation || '')
-            })
-
-            bridgeRef.current.on('error', (err: any) => {
-              console.error('Translation error:', err)
-              setError('Translation failed')
-            })
-          }
-
-          // Send for translation
-          if (bridgeRef.current) {
-            const textBlob = new Blob([transcript], { type: 'text/plain' })
-            bridgeRef.current.translate(textBlob, targetLanguage)
-              .catch(err => console.error('Translation error:', err))
-          }
-        }
+          onTranscriptChange?.(transcript);
+        };
 
         recognitionRef.current.onerror = (event: any) => {
-          console.error('Recognition error:', event.error)
-          setError(`Speech recognition error: ${event.error}`)
-        }
+          console.error('Recognition error:', event.error);
+          setError(`Speech recognition error: ${event.error}`);
+          stopRecording();
+        };
 
-        recognitionRef.current.start()
-      } else {
-        throw new Error('Speech recognition not supported in this browser')
+        recognitionRef.current.start();
       }
-
-      // Set up audio processing
-      const source = audioContextRef.current.createMediaStreamSource(mediaStreamRef.current)
-      analyserRef.current = audioContextRef.current.createAnalyser()
-      analyserRef.current.fftSize = 256
-      
-      source.connect(analyserRef.current)
-      
-      // Audio level monitoring
-      const updateAudioLevel = () => {
-        if (!analyserRef.current) return
-        
-        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
-        analyserRef.current.getByteFrequencyData(dataArray)
-        
-        // Calculate audio level (simple average)
-        const average = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length
-        setAudioLevel(average)
-        
-        animationFrameRef.current = requestAnimationFrame(updateAudioLevel)
-      }
-      
-      updateAudioLevel()
-      
-      setError(null)
-
     } catch (error) {
-      console.error('Error starting recording:', error)
-      setError(error instanceof Error ? error.message : 'Failed to start recording')
-      stopRecording()
+      console.error('Error starting recording:', error);
+      setError(error instanceof Error ? error.message : 'Failed to start recording');
+      stopRecording();
     }
-  }
+  };
 
   const stopRecording = () => {
-    // Stop animation frame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = null
-    }
-
-    // Stop recognition
     if (recognitionRef.current) {
-      recognitionRef.current.stop()
-      recognitionRef.current = null
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
     }
 
-    // Stop audio processing
-    if (analyserRef.current) {
-      analyserRef.current.disconnect()
-      analyserRef.current = null
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.cleanup();
+      audioProcessorRef.current = null;
     }
 
-    // Stop media stream
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop())
-      mediaStreamRef.current = null
-    }
-
-    // Clean up audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-
-    // Clean up translation bridge
-    if (bridgeRef.current) {
-      bridgeRef.current.disconnect()
-      bridgeRef.current = null
-    }
-
-    setIsRecording(false)
-    setAudioLevel(0)
-    setIsVoiceDetected(false)
-    setCurrentWord('')
-  }
+    setIsRecording(false);
+    setIsVoiceDetected(false);
+    setAudioLevel(0);
+    setCurrentWord('');
+  };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopRecording()
-    }
-  }, [])
+      stopRecording();
+    };
+  }, []);
 
   // Loading state when not in browser
   if (!isBrowser) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex flex-col items-center space-y-4">
-          <button
-            disabled
-            className="p-4 rounded-full bg-gray-300 text-white"
-          >
-            <Mic className="w-6 h-6" />
-          </button>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
           <div className="text-sm text-gray-600">
-            Loading...
+            Initializing audio system...
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex flex-col items-center space-y-4">
         {/* Recording Button with Status Ring */}
         <div className="relative">
           <button
             onClick={isRecording ? stopRecording : startRecording}
+            disabled={!!error}
             className={`p-4 rounded-full ${
               isRecording 
                 ? 'bg-red-500 hover:bg-red-600' 
                 : 'bg-indigo-500 hover:bg-indigo-600'
-            } text-white transition-colors`}
+            } text-white transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed`}
+            aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
           >
             {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
           </button>
+          
           {/* Voice Activity Ring */}
           {isRecording && (
             <div 
-              className={`absolute -inset-1 rounded-full border-2 
-                ${isVoiceDetected ? 'border-green-500 animate-pulse' : 'border-gray-300'}
-                -z-10`} 
+              className={`absolute -inset-1 rounded-full border-2 ${
+                isVoiceDetected ? 'border-green-500 animate-pulse' : 'border-gray-300'
+              } -z-10`}
+              role="status"
+              aria-label={isVoiceDetected ? 'Voice detected' : 'No voice detected'}
             />
           )}
         </div>
@@ -246,16 +191,16 @@ export default function AudioTranslator({
         {/* Recording Status */}
         <div className="text-sm text-gray-600">
           {isRecording && (
-            <>
-              <span className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                </span>
-                Recording
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </span>
-              {isVoiceDetected && <span className="text-green-500 ml-2">Voice Detected</span>}
-            </>
+              Recording
+              {isVoiceDetected && (
+                <span className="text-green-500 ml-2">Voice Detected</span>
+              )}
+            </div>
           )}
         </div>
 
@@ -263,14 +208,18 @@ export default function AudioTranslator({
         <div className="w-full space-y-1">
           <div className="flex justify-between text-xs text-gray-500">
             <span>Audio Level</span>
-            <span>{Math.round((audioLevel / 255) * 100)}%</span>
+            <span>{Math.round(audioLevel)}%</span>
           </div>
           <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
             <div 
               className={`h-full transition-all duration-100 ${
-                audioLevel > 128 ? 'bg-green-500' : 'bg-indigo-500'
+                audioLevel > 50 ? 'bg-green-500' : 'bg-indigo-500'
               }`}
-              style={{ width: `${(audioLevel / 255) * 100}%` }}
+              style={{ width: `${audioLevel}%` }}
+              role="progressbar"
+              aria-valuenow={audioLevel}
+              aria-valuemin={0}
+              aria-valuemax={100}
             />
           </div>
         </div>
@@ -282,12 +231,16 @@ export default function AudioTranslator({
           </div>
         )}
 
-        {error && (
-          <div className="w-full p-3 bg-red-100 text-red-700 rounded-md">
-            {error}
-          </div>
-        )}
+        {/* Instructions */}
+        <div className="text-sm text-gray-500 mt-4">
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Speak clearly and at a moderate pace</li>
+            <li>Stay close to the microphone</li>
+            <li>Minimize background noise</li>
+            <li>Check the transcript to ensure accuracy</li>
+          </ul>
+        </div>
       </div>
     </div>
-  )
+  );
 }
