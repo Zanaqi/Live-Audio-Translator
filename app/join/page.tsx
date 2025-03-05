@@ -99,6 +99,7 @@ export default function JoinPage() {
   // Check if room exists
   const checkRoom = async (code: string) => {
     try {
+      setError(null);
       const response = await fetch(`/api/rooms?code=${code}`);
       
       if (!response.ok) {
@@ -130,10 +131,17 @@ export default function JoinPage() {
     setError(null);
     
     try {
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication token not found. Please log in again.');
+      }
+
       const response = await fetch('/api/rooms/join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           code: roomCode,
@@ -142,26 +150,40 @@ export default function JoinPage() {
         }),
       });
 
+      const responseText = await response.text();
+      console.log('Join room response:', responseText);
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        throw new Error('Invalid response from server');
+      }
+
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('Room not found. Please check the code and try again.');
+        } else if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.');
+        } else if (data.error) {
+          throw new Error(data.error);
         }
         throw new Error('Failed to join room');
       }
 
-      const data = await response.json();
-      
-      // Connect to WebSocket
+      // Connect to WebSocket with room details
       await wsManager.connect({
         roomId: data.roomId,
+        roomCode: data.roomCode,
         participantId: user.id,
         role: 'tourist',
         preferredLanguage: user.preferredLanguage,
-        roomCode,
         touristName: user.name
       });
       
     } catch (error) {
+      console.error('Join room error:', error);
       setError(error instanceof Error ? error.message : 'Failed to join room');
     } finally {
       setJoiningRoom(false);

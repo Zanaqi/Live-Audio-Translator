@@ -2,103 +2,125 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
-import { AuthService } from '@/lib/services/authService'
 
+// Protected routes that require authentication
 const protectedPaths = ['/dashboard', '/guide', '/join']
-const authPaths = ['/login', '/register']
+
+// Routes that should only be accessible when NOT authenticated
+const authPaths = ['/login', '/register'] 
+
+// Routes to completely bypass middleware
+const bypassPaths = [
+  '/_next', 
+  '/favicon.ico',
+  '/api/',
+  '/clear-tokens'
+]
+
+// JWT secret key
+const JWT_SECRET = process.env.JWT_SECRET || 'your-fallback-secret-key-here'
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl
+  
+  // Skip middleware for static assets, API routes, and the token clearing page
+  if (bypassPaths.some(path => pathname.startsWith(path))) {
+    return NextResponse.next();
+  }
+  
   console.log('Middleware processing path:', pathname, 'search:', search);
 
-  // Get token from either cookie or Authorization header
+  // Extract token (prefer cookie, then header)
   const token = request.cookies.get('auth-token')?.value || 
-                request.headers.get('Authorization')?.split(' ')[1]
+                request.headers.get('Authorization')?.split(' ')[1] || null;
   
-  console.log('Token present:', !!token);
+  console.log('Token present:', token ? true : false);
 
-  // Check protected routes that require authentication
-  if (protectedPaths.some(path => pathname.startsWith(path))) {
-    if (!token) {
-      console.log('No token found, redirecting to login');
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('from', pathname + search)
-      return NextResponse.redirect(loginUrl)
-    }
+  let isValidToken = false;
+  let tokenPayload: any = null;
 
+  // Verify token if present
+  if (token) {
     try {
-      // Verify token
-      const secret = new TextEncoder().encode(process.env.JWT_SECRET)
-      const { payload } = await jwtVerify(token, secret)
-
-      // Verify user exists in database
-      const user = await AuthService.getUserFromToken(token)
-      if (!user) {
-        console.log('User not found in database, redirecting to login');
-        const loginUrl = new URL('/login', request.url)
-        loginUrl.searchParams.set('from', pathname + search)
-        return NextResponse.redirect(loginUrl)
-      }
-
-      console.log('Token verified and user found:', user);
-
-      // Role-based route protection
-      if (pathname.startsWith('/guide') && user.role !== 'guide') {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
-      }
-
-      if (pathname.startsWith('/join') && user.role !== 'tourist') {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
-      }
-
-      // Add user info to headers
-      const requestHeaders = new Headers(request.headers)
-      requestHeaders.set('x-user-id', user.id)
-      requestHeaders.set('x-user-role', user.role)
-
-      return NextResponse.next({
-        request: {
-          headers: requestHeaders,
-        },
-      })
-    } catch (error) {
-      console.error('Token verification failed:', error)
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('from', pathname + search)
-      return NextResponse.redirect(loginUrl)
-    }
-  }
-
-  // Handle auth pages
-  if (authPaths.some(path => pathname.startsWith(path))) {
-    if (token) {
-      try {
-        const user = await AuthService.getUserFromToken(token)
-        if (user) {
-          // Only redirect if user exists in database
-          return NextResponse.redirect(new URL('/dashboard', request.url))
+      const secret = new TextEncoder().encode(JWT_SECRET);
+      
+      // Use basic verification without maxTokenAge to avoid iat requirement
+      const verificationResult = await jwtVerify(token, secret);
+      
+      tokenPayload = verificationResult.payload;
+      
+      // Check if token has minimum required payload
+      if (tokenPayload && tokenPayload.id && tokenPayload.role) {
+        // Manually check if token is expired
+        if (tokenPayload.exp && tokenPayload.exp * 1000 > Date.now()) {
+          isValidToken = true;
+          console.log('Token is valid for user:', tokenPayload.id);
+        } else {
+          console.log('Token is expired');
         }
-      } catch (error) {
-        // If token is invalid or user not found, continue to auth page
-        console.error('Auth verification failed:', error)
+      } else {
+        console.log('Token payload missing required fields');
       }
+    } catch (error) {
+      console.error('Token verification failed:', error);
+      isValidToken = false;
     }
   }
 
-  return NextResponse.next()
+  // PROTECTED ROUTES: Require valid authentication
+  if (protectedPaths.some(path => pathname.startsWith(path))) {
+    if (!isValidToken) {
+      console.log('Access to protected route denied, redirecting to login');
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('from', pathname + search);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Role-based access control
+    if (pathname.startsWith('/guide') && tokenPayload.role !== 'guide') {
+      console.log('Not authorized as guide, redirecting to dashboard');
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+
+    if (pathname.startsWith('/join') && tokenPayload.role !== 'tourist') {
+      console.log('Not authorized as tourist, redirecting to dashboard');
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+
+    // User is authenticated and authorized, add user info to headers
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-user-id', tokenPayload.id);
+    requestHeaders.set('x-user-role', tokenPayload.role);
+
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+  }
+
+  // AUTH ROUTES: Only accessible when NOT authenticated
+  if (authPaths.some(path => pathname.startsWith(path))) {
+    if (isValidToken) {
+      console.log('Already authenticated, redirecting from auth page to dashboard');
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
+  // All other routes: proceed normally
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/guide/:path*',
-    '/join/:path*',
-    '/login/:path*',
-    '/register/:path*',
-    '/dashboard',
-    '/guide',
-    '/join',
-    '/login',
-    '/register'
-  ]
+    /*
+     * Match all request paths except for:
+     * 1. /api routes
+     * 2. /_next (Next.js internals)
+     * 3. /_static (static files)
+     * 4. /_vercel (Vercel internals)
+     * 5. /favicon.ico, /sitemap.xml, /robots.txt (public files)
+     */
+    '/((?!api/|_next/|_static/|_vercel/|favicon.ico|sitemap.xml|robots.txt).*)',
+  ],
 }

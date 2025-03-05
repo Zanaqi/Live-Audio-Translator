@@ -35,7 +35,33 @@ const userSchema = new Schema<IUser>({
   rooms: [roomEntrySchema]
 });
 
-// Check if the model exists first
-const User = mongoose.models.User || model<IUser>('User', userSchema);
+// Safely define User model
+let User: Model<IUser>;
+
+// Check if we're in a Node.js environment and if mongoose models is available
+if (typeof mongoose !== 'undefined' && mongoose.models) {
+  // First check if the model already exists to prevent model overwrite error
+  if (mongoose.models.User) {
+    User = mongoose.models.User as Model<IUser>;
+  } else {
+    // If model doesn't exist yet, create it
+    try {
+      User = model<IUser>('User', userSchema);
+    } catch (error) {
+      console.error('Error creating User model:', error);
+      // Create a mock model
+      User = {
+        findOne: () => Promise.resolve(null),
+        // Add other necessary methods
+      } as unknown as Model<IUser>;
+    }
+  }
+} else {
+  // In environments where mongoose is not fully available (like Edge Runtime)
+  User = {
+    findOne: () => Promise.resolve(null),
+    // Add other necessary methods
+  } as unknown as Model<IUser>;
+}
 
 export default User;

@@ -43,32 +43,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const verifyAuth = async () => {
       try {
-        // Get token from localStorage
-        const token = localStorage.getItem('token');
+        // Initialize as loading
+        setLoading(true);
+        
+        // Get token from localStorage only if in browser
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
         
         if (!token) {
+          // No token found, not authenticated
+          setUser(null);
           setLoading(false);
           return;
         }
 
-        const response = await fetch('/api/auth/verify', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        // Verify token with the server
+        try {
+          const response = await fetch('/api/auth/verify', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data.user);
-        } else {
-          // Clear invalid auth data
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+              setUser(data.user);
+            } else {
+              // Invalid user data, clear localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+              }
+              setUser(null);
+            }
+          } else {
+            // Invalid token, clear localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            }
+            setUser(null);
+          }
+        } catch (error) {
+          console.error('Auth verification error:', error);
+          // API error, clear localStorage to be safe
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          }
+          setUser(null);
         }
       } catch (error) {
         console.error('Auth verification error:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        setUser(null);
       } finally {
         setLoading(false);
       }

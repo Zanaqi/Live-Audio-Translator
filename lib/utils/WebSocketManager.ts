@@ -31,7 +31,12 @@ class WebSocketManager extends EventEmitter {
     if (this.initialized) return;
     
     try {
-      const response = await fetch('/api/ws');
+      // Get server URL - use absolute URL to avoid issues
+      const baseUrl = typeof window !== 'undefined' 
+        ? window.location.origin
+        : 'http://localhost:3000';
+      
+      const response = await fetch(`${baseUrl}/api/ws`);
       const { wsUrl } = await response.json();
       this.wsUrl = wsUrl;
       this.initialized = true;
@@ -162,6 +167,12 @@ class WebSocketManager extends EventEmitter {
       return;
     }
     
+    // Get token from localStorage if available
+    let token = '';
+    if (typeof window !== 'undefined') {
+      token = localStorage.getItem('token') || '';
+    }
+    
     // Send a complete join message with all necessary fields
     const joinMessage = {
       type: 'join',
@@ -171,7 +182,8 @@ class WebSocketManager extends EventEmitter {
       roomCode: this.config.roomCode,
       preferredLanguage: this.config.preferredLanguage,
       touristName: this.config.touristName,
-      guideName: this.config.guideName
+      guideName: this.config.guideName,
+      token: token // Include token for authentication
     };
     
     console.log('Sending join message:', joinMessage);

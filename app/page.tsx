@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Mic, Headphones, Languages, Globe } from 'lucide-react'
 import { useAuth } from '@/lib/context/AuthContext'
 
@@ -13,27 +14,20 @@ export default function Home() {
   // Clear any stale auth data
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      // Also clear the auth cookie if present
-      document.cookie = 'auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      // Don't clear auth data here as it might be valid
+      // The auth state is already managed by AuthContext
     }
   }, []);
 
   const handleGuideClick = () => {
-    console.log('Guide click - redirecting to login with guide return path');
-    const destination = '/guide';
-    const loginPath = `/login?from=${encodeURIComponent(destination)}`;
-    console.log('Redirecting to:', loginPath);
-    router.push(loginPath);
+    // Go directly to register page or login page
+    router.push('/register?role=guide');
   }
   
   const handleTouristClick = () => {
-    console.log('Tourist click - redirecting to login with join return path');
-    const destination = roomCode ? `/join?code=${roomCode}` : '/join';
-    const loginPath = `/login?from=${encodeURIComponent(destination)}`;
-    console.log('Redirecting to:', loginPath);
-    router.push(loginPath);
+    // Go directly to register page with tourist role
+    const registerPath = `/register?role=tourist${roomCode ? `&roomCode=${roomCode}` : ''}`;
+    router.push(registerPath);
   }
 
   if (loading) {
@@ -42,6 +36,12 @@ export default function Home() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
       </div>
     )
+  }
+
+  // If user is already logged in, redirect to dashboard
+  if (user) {
+    router.push('/dashboard');
+    return null;
   }
 
   return (
@@ -90,12 +90,20 @@ export default function Home() {
                 </li>
               </ul>
               
-              <button
-                onClick={handleGuideClick}
-                className="w-full text-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
-              >
-                Start as Tour Guide
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleGuideClick}
+                  className="flex-1 text-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                >
+                  Register as Guide
+                </button>
+                <Link 
+                  href="/login"
+                  className="flex-1 text-center px-4 py-2 bg-gray-200 text-purple-600 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                >
+                  Login
+                </Link>
+              </div>
             </div>
           </div>
           
@@ -140,12 +148,20 @@ export default function Home() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 text-gray-600"
                 />
                 
-                <button
-                  onClick={handleTouristClick}
-                  className="w-full text-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                >
-                  Join as Tourist
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleTouristClick}
+                    className="flex-1 text-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                  >
+                    Register as Tourist
+                  </button>
+                  <Link 
+                    href="/login"
+                    className="flex-1 text-center px-4 py-2 bg-gray-200 text-teal-600 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                  >
+                    Login
+                  </Link>
+                </div>
               </div>
             </div>
           </div>

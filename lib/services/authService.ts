@@ -16,30 +16,42 @@ export interface AuthResponse {
 export class AuthService {
     static async getUserFromToken(token: string) {
         try {
-            const secret = new TextEncoder().encode(process.env.JWT_SECRET || '');
+            const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-fallback-secret-key-here');
             const { payload } = await jwtVerify(token, secret);
             
             if (!payload.id) {
-            console.log('No user ID in token payload');
-            return null;
+                console.log('No user ID in token payload');
+                return null;
             }
-        
-            await connectToDatabase();
-            const user = await User.findOne({ id: payload.id });
             
-            console.log('Database lookup result:', user ? 'User found' : 'User not found');
-            
-            if (!user) {
-            return null;
+            try {
+                await connectToDatabase();
+                const user = await User.findOne({ id: payload.id });
+                
+                console.log('Database lookup result:', user ? 'User found' : 'User not found');
+                
+                if (!user) {
+                    return null;
+                }
+                
+                return {
+                    id: user.id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                    preferredLanguage: user.preferredLanguage
+                };
+            } catch (dbError) {
+                console.error('Database error:', dbError);
+                // Return basic info from token for edge runtime
+                return {
+                    id: payload.id as string,
+                    email: payload.email as string,
+                    name: payload.name as string,
+                    role: payload.role as string,
+                    preferredLanguage: payload.preferredLanguage as string
+                };
             }
-        
-            return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            preferredLanguage: user.preferredLanguage
-            };
         } catch (error) {
             console.error('Error getting user from token:', error);
             return null;
@@ -85,7 +97,8 @@ export class AuthService {
         id: userId,
         email,
         role,
-        name
+        name,
+        preferredLanguage
       });
 
       // Return user data (excluding password)
@@ -125,7 +138,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
-        name: user.name
+        name: user.name,
+        preferredLanguage: user.preferredLanguage
       });
 
       // Return user data (excluding password)

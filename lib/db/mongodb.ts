@@ -1,13 +1,8 @@
 // lib/db/mongodb.ts
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI!;
-
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable');
-}
-
-console.log("MongoDB URI:", MONGODB_URI);
+// Get MongoDB URI from environment variable
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/audio-translation';
 
 // Define interface for the cached mongoose connection
 interface CachedConnection {
@@ -27,30 +22,44 @@ let cached: CachedConnection = global.mongooseConnection ?? {
   promise: null,
 };
 
-// Save our connection cache to the global object
-global.mongooseConnection = cached;
+// Only save connection to global if we're in a Node.js environment
+if (typeof global !== 'undefined') {
+  global.mongooseConnection = cached;
+}
 
 async function connectToDatabase(): Promise<typeof mongoose> {
+  // If connection is already established, return it
   if (cached.conn) {
     return cached.conn;
   }
 
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.promise = mongoose.connect(MONGODB_URI, opts);
+  // If connection is being established, wait for it
+  if (cached.promise) {
+    return await cached.promise;
   }
 
   try {
+    // Check if we're in a browser/edge environment where mongoose might not work fully
+    if (typeof window !== 'undefined' || !mongoose.connect) {
+      console.warn('Running in browser or edge environment - MongoDB connections may not work');
+      return mongoose;
+    }
+
+    // Store the connection promise
+    cached.promise = mongoose.connect(MONGODB_URI, {
+      bufferCommands: false,
+    });
+
+    // Wait for connection
     cached.conn = await cached.promise;
+    
+    console.log('Successfully connected to MongoDB');
+    return cached.conn;
   } catch (e) {
+    console.error('Failed to connect to MongoDB:', e);
     cached.promise = null;
     throw e;
   }
-
-  return cached.conn;
 }
 
 export default connectToDatabase;

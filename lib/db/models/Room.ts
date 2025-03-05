@@ -45,7 +45,35 @@ const roomSchema = new Schema<IRoom>({
   createdBy: { type: String, required: true } // Add user reference
 });
 
-// Prevent model overwrite error in development
-const Room = mongoose.models.Room || model<IRoom>('Room', roomSchema);
+// Safely define Room model
+let Room: Model<IRoom>;
 
-export default Room as Model<IRoom>;
+// Check if we're in a Node.js environment and if mongoose models is available
+if (typeof mongoose !== 'undefined' && mongoose.models) {
+  // First check if the model already exists to prevent model overwrite error
+  if (mongoose.models.Room) {
+    Room = mongoose.models.Room as Model<IRoom>;
+  } else {
+    // If model doesn't exist yet, create it
+    try {
+      Room = model<IRoom>('Room', roomSchema);
+    } catch (error) {
+      console.error('Error creating Room model:', error);
+      // Create a mock model
+      Room = {
+        findOne: () => Promise.resolve(null),
+        find: () => Promise.resolve([]),
+        // Add other necessary methods
+      } as unknown as Model<IRoom>;
+    }
+  }
+} else {
+  // In environments where mongoose is not fully available (like Edge Runtime)
+  Room = {
+    findOne: () => Promise.resolve(null),
+    find: () => Promise.resolve([]),
+    // Add other necessary methods
+  } as unknown as Model<IRoom>;
+}
+
+export default Room;

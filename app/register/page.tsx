@@ -1,58 +1,93 @@
 // app/register/page.tsx
 'use client'
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function Register() {
+  const searchParams = useSearchParams();
+  const { register, user, loading } = useAuth();
+  const router = useRouter();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<'guide' | 'tourist'>('tourist');
   const [preferredLanguage, setPreferredLanguage] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [roomCode, setRoomCode] = useState('');
+
+  // Set initial role from URL parameter
+  useEffect(() => {
+    const urlRole = searchParams.get('role');
+    if (urlRole === 'guide' || urlRole === 'tourist') {
+      setRole(urlRole);
+    }
+    
+    const urlRoomCode = searchParams.get('roomCode');
+    if (urlRoomCode) {
+      setRoomCode(urlRoomCode);
+    }
+  }, [searchParams]);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    
+    // Validate required fields
+    if (!email || !password || !name) {
+      setError('Please fill in all required fields');
+      return;
+    }
+    
+    // Validate preferred language for tourists
+    if (role === 'tourist' && !preferredLanguage) {
+      setError('Please select your preferred language');
+      return;
+    }
+    
+    setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          name,
-          role,
-          preferredLanguage: role === 'tourist' ? preferredLanguage : undefined
-        }),
+      await register({
+        email,
+        password,
+        name,
+        role,
+        preferredLanguage: role === 'tourist' ? preferredLanguage : undefined
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
+      // If there was a room code, redirect to join page
+      if (role === 'tourist' && roomCode) {
+        router.push(`/join?code=${roomCode}`);
+      } else if (role === 'guide') {
+        router.push('/guide');
+      } else {
+        router.push('/dashboard');
       }
-
-      // Store token and user data
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      // Redirect to dashboard
-      router.push('/dashboard');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Registration failed');
-    } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -76,9 +111,9 @@ export default function Register() {
             </div>
           )}
 
-          <div className="rounded-md shadow-sm space-y-2">
+          <div className="rounded-md shadow-sm space-y-4">
             <div>
-              <label htmlFor="name" className="sr-only">Name</label>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
               <input
                 id="name"
                 name="name"
@@ -92,7 +127,7 @@ export default function Register() {
             </div>
             
             <div>
-              <label htmlFor="email-address" className="sr-only">Email address</label>
+              <label htmlFor="email-address" className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
               <input
                 id="email-address"
                 name="email"
@@ -107,7 +142,7 @@ export default function Register() {
             </div>
 
             <div>
-              <label htmlFor="password" className="sr-only">Password</label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
               <input
                 id="password"
                 name="password"
@@ -122,7 +157,7 @@ export default function Register() {
             </div>
 
             <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
                 I am a
               </label>
               <select
@@ -139,7 +174,7 @@ export default function Register() {
 
             {role === 'tourist' && (
               <div>
-                <label htmlFor="language" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="language" className="block text-sm font-medium text-gray-700 mb-1">
                   Preferred Language
                 </label>
                 <select
@@ -148,6 +183,7 @@ export default function Register() {
                   value={preferredLanguage}
                   onChange={(e) => setPreferredLanguage(e.target.value)}
                   className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  required={role === 'tourist'}
                 >
                   <option value="">Select a language</option>
                   <option value="Chinese">Chinese (Mandarin)</option>
@@ -159,15 +195,27 @@ export default function Register() {
                 </select>
               </div>
             )}
+
+            {roomCode && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Room Code
+                </label>
+                <div className="bg-gray-100 p-2 rounded-md border border-gray-300">
+                  <p className="text-gray-700">{roomCode}</p>
+                  <p className="text-xs text-gray-500 mt-1">You'll join this tour room after registration</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
             <button
               type="submit"
-              disabled={loading || (role === 'tourist' && !preferredLanguage)}
+              disabled={isLoading || (role === 'tourist' && !preferredLanguage)}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
             >
-              {loading ? 'Creating account...' : 'Create account'}
+              {isLoading ? 'Creating account...' : 'Create account'}
             </button>
           </div>
         </form>
