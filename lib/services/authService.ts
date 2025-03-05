@@ -1,6 +1,7 @@
 // lib/services/authService.ts
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { jwtVerify } from 'jose';
 import connectToDatabase from '../db/mongodb';
 import User, { IUser } from '../db/models/User';
 import { generateToken } from '../utils/authHelper';
@@ -13,6 +14,38 @@ export interface AuthResponse {
 }
 
 export class AuthService {
+    static async getUserFromToken(token: string) {
+        try {
+            const secret = new TextEncoder().encode(process.env.JWT_SECRET || '');
+            const { payload } = await jwtVerify(token, secret);
+            
+            if (!payload.id) {
+            console.log('No user ID in token payload');
+            return null;
+            }
+        
+            await connectToDatabase();
+            const user = await User.findOne({ id: payload.id });
+            
+            console.log('Database lookup result:', user ? 'User found' : 'User not found');
+            
+            if (!user) {
+            return null;
+            }
+        
+            return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            preferredLanguage: user.preferredLanguage
+            };
+        } catch (error) {
+            console.error('Error getting user from token:', error);
+            return null;
+        }
+    }
+
   static async register(
     email: string,
     password: string,
@@ -113,9 +146,19 @@ export class AuthService {
 
   static async getUserRooms(userId: string) {
     try {
+      console.log('Getting rooms for user:', userId);
       await connectToDatabase();
+      
       const user = await User.findOne({ id: userId });
-      return user?.rooms || [];
+      console.log('Found user:', user ? 'yes' : 'no');
+      
+      if (!user) {
+        console.error('User not found:', userId);
+        return [];
+      }
+      
+      console.log('User rooms:', user.rooms);
+      return user.rooms || [];
     } catch (error) {
       console.error('Error getting user rooms:', error);
       return [];
@@ -129,8 +172,10 @@ export class AuthService {
     role: 'guide' | 'tourist'
   ) {
     try {
+      console.log('Adding room to user:', { userId, roomId, roomName, role });
       await connectToDatabase();
-      await User.updateOne(
+      
+      const result = await User.updateOne(
         { id: userId },
         {
           $push: {
@@ -143,7 +188,9 @@ export class AuthService {
           }
         }
       );
-      return true;
+      
+      console.log('Update result:', result);
+      return result.modifiedCount > 0;
     } catch (error) {
       console.error('Error adding room to user:', error);
       return false;

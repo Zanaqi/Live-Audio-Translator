@@ -1,6 +1,6 @@
 // app/api/auth/verify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromToken } from '@/lib/utils/authHelper';
+import { AuthService } from '@/lib/services/authService';
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,16 +13,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const payload = await getUserFromToken(token);
+    const user = await AuthService.getUserFromToken(token);
     
-    if (!payload) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Invalid token' },
         { status: 401 }
       );
     }
 
-    return NextResponse.json({ valid: true, user: payload });
+    return NextResponse.json({ valid: true, user });
   } catch (error) {
     console.error('Token verification error:', error);
     return NextResponse.json(

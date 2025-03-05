@@ -1,4 +1,3 @@
-// lib/context/AuthContext.tsx
 'use client'
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -42,11 +41,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkAuth = async () => {
+    const verifyAuth = async () => {
       try {
-        const response = await fetch('/api/auth/verify');
+        // Get token from localStorage
+        const token = localStorage.getItem('token');
         
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch('/api/auth/verify', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
         if (response.ok) {
           const data = await response.json();
           setUser(data.user);
@@ -56,13 +66,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem('user');
         }
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error('Auth verification error:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
       } finally {
         setLoading(false);
       }
     };
 
-    checkAuth();
+    verifyAuth();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -81,15 +93,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Store user data in localStorage
+      // Store token and user data
+      localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       
       // Update state
       setUser(data.user);
 
-      // Log successful login
-      console.log('Login successful, user:', data.user);
-      
       return data;
     } catch (error) {
       console.error('Login error:', error);
@@ -119,7 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data.message || 'Registration failed');
       }
 
-      // Store user data in localStorage
+      // Store token and user data
+      localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       
       // Update state
@@ -140,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       // Clear local storage
+      localStorage.removeItem('token');
       localStorage.removeItem('user');
       
       // Update state
@@ -150,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Logout error:', error);
       // Still clear local state even if server request fails
+      localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
       router.push('/login');

@@ -1,10 +1,10 @@
-// app/dashboard/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Users, Calendar, ArrowRight } from 'lucide-react';
+import { Users, Calendar, ArrowRight, Plus } from 'lucide-react';
+import { useAuth } from '@/lib/context/AuthContext';
 
 interface Room {
   roomId: string;
@@ -13,62 +13,95 @@ interface Room {
   joinedAt: Date;
 }
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'guide' | 'tourist';
-  preferredLanguage?: string;
-}
-
 export default function Dashboard() {
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user, loading } = useAuth();
   const router = useRouter();
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 
+  // Redirect if not authenticated
   useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-
-    if (!token || !userData) {
+    if (!loading && !user) {
       router.push('/login');
-      return;
     }
+  }, [loading, user, router]);
 
-    setUser(JSON.parse(userData));
-    fetchRooms(token);
-  }, [router]);
-
-  const fetchRooms = async (token: string) => {
-    try {
-      const response = await fetch('/api/auth/user/rooms', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+  // Fetch rooms only when user is authenticated
+  useEffect(() => {
+    const fetchRooms = async () => {
+      if (!user) return;
+  
+      try {
+        console.log('Fetching rooms for user:', user.id);
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+          throw new Error('No authentication token');
         }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch rooms');
+  
+        console.log('Making request to /api/auth/user/rooms');
+        const response = await fetch('/api/auth/user/rooms', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+  
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+          const text = await response.text();
+          console.error('Error response:', text);
+          throw new Error('Failed to fetch rooms');
+        }
+  
+        const data = await response.json();
+        console.log('Received rooms data:', data);
+        setRooms(data.rooms || []);
+      } catch (error) {
+        console.error('Error fetching rooms:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load rooms');
+      } finally {
+        setIsLoadingRooms(false);
       }
-
-      const data = await response.json();
-      setRooms(data.rooms);
-    } catch (error) {
-      setError('Failed to load rooms');
-      console.error('Error fetching rooms:', error);
-    } finally {
-      setLoading(false);
+    };
+  
+    if (user) {
+      fetchRooms();
     }
-  };
+  }, [user]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
+  const EmptyState = () => (
+    <div className="text-center py-12 bg-white rounded-lg shadow">
+      <div className="mb-6">
+        {user?.role === 'guide' ? (
+          <>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Tour Rooms Yet</h3>
+            <p className="text-gray-500 mb-6">Create your first tour room to get started with translations.</p>
+            <Link
+              href="/guide"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 shadow-sm"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Create New Tour Room
+            </Link>
+          </>
+        ) : (
+          <>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Tours Joined Yet</h3>
+            <p className="text-gray-500 mb-6">Join a tour using a room code to start receiving translations.</p>
+            <Link
+              href="/join"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 shadow-sm"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Join a Tour
+            </Link>
+          </>
+        )}
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -76,6 +109,10 @@ export default function Dashboard() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (
@@ -87,9 +124,13 @@ export default function Dashboard() {
               <h1 className="text-xl font-bold text-indigo-600">Translation Dashboard</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-gray-700">{user?.name}</span>
+              <span className="text-gray-700">{user.name}</span>
               <button
-                onClick={handleLogout}
+                onClick={() => {
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                  router.push('/login');
+                }}
                 className="text-gray-600 hover:text-gray-900"
               >
                 Logout
@@ -102,10 +143,10 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* User Info */}
         <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome, {user?.name}!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome, {user.name}!</h2>
           <div className="text-gray-600">
-            <p>Role: {user?.role === 'guide' ? 'Tour Guide' : 'Tourist'}</p>
-            {user?.preferredLanguage && (
+            <p>Role: {user.role === 'guide' ? 'Tour Guide' : 'Tourist'}</p>
+            {user.preferredLanguage && (
               <p>Preferred Language: {user.preferredLanguage}</p>
             )}
           </div>
@@ -114,11 +155,20 @@ export default function Dashboard() {
         {/* Create/Join Room Button */}
         <div className="mb-6">
           <Link
-            href={user?.role === 'guide' ? '/guide' : '/join'}
+            href={user.role === 'guide' ? '/guide' : '/join'}
             className="inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
           >
-            {user?.role === 'guide' ? 'Create New Tour Room' : 'Join a Tour'}
-            <ArrowRight className="ml-2 h-5 w-5" />
+            {user.role === 'guide' ? (
+              <>
+                <Plus className="h-5 w-5 mr-2" />
+                Create New Tour Room
+              </>
+            ) : (
+              <>
+                <Plus className="h-5 w-5 mr-2" />
+                Join a Tour
+              </>
+            )}
           </Link>
         </div>
 
@@ -134,15 +184,12 @@ export default function Dashboard() {
             </div>
           )}
 
-          {rooms.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              <p>You haven't {user?.role === 'guide' ? 'created any rooms' : 'joined any tours'} yet.</p>
-              <p className="mt-1">
-                {user?.role === 'guide' 
-                  ? 'Create your first tour room to get started!'
-                  : 'Join a tour to get started!'}
-              </p>
+          {isLoadingRooms ? (
+            <div className="p-6 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
             </div>
+          ) : rooms.length === 0 ? (
+            <EmptyState />
           ) : (
             <ul className="divide-y divide-gray-200">
               {rooms.map((room) => (

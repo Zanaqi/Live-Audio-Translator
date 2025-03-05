@@ -1,4 +1,3 @@
-// app/login/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react';
@@ -16,11 +15,20 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already logged in
+  // Check if already logged in
   useEffect(() => {
     if (!loading && user) {
-      const returnUrl = searchParams.get('from') || '/dashboard';
-      router.push(returnUrl);
+      const returnUrl = searchParams.get('from');
+      if (returnUrl) {
+        // Validate the return URL based on role
+        if ((returnUrl.startsWith('/guide') && user.role === 'guide') ||
+            (returnUrl.startsWith('/join') && user.role === 'tourist')) {
+          router.push(returnUrl);
+          return;
+        }
+      }
+      // Default to dashboard if no valid return URL
+      router.push('/dashboard');
     }
   }, [user, loading, router, searchParams]);
 
@@ -30,14 +38,9 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      // Call login from auth context
       await login(email, password);
       
-      // Get return URL from query parameters or use default
-      const returnUrl = searchParams.get('from') || '/dashboard';
-      console.log('Redirecting to:', returnUrl); // Debug log
-      router.push(returnUrl);
-      
+      // The useEffect above will handle redirection after successful login
     } catch (error) {
       console.error('Login error:', error);
       setError(error instanceof Error ? error.message : 'Login failed');
@@ -54,6 +57,7 @@ export default function Login() {
     );
   }
 
+  // Rest of your login page JSX remains the same
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">

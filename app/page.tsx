@@ -1,4 +1,3 @@
-// app/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -11,20 +10,30 @@ export default function Home() {
   const router = useRouter()
   const { user, loading } = useAuth()
 
-  const handleGuideClick = () => {
-    if (user && user.role === 'guide') {
-      router.push('/guide')
-    } else {
-      router.push('/login?from=/guide')
+  // Clear any stale auth data
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      // Also clear the auth cookie if present
+      document.cookie = 'auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     }
-  }
+  }, []);
 
+  const handleGuideClick = () => {
+    console.log('Guide click - redirecting to login with guide return path');
+    const destination = '/guide';
+    const loginPath = `/login?from=${encodeURIComponent(destination)}`;
+    console.log('Redirecting to:', loginPath);
+    router.push(loginPath);
+  }
+  
   const handleTouristClick = () => {
-    if (user && user.role === 'tourist') {
-      router.push(roomCode ? `/join?code=${roomCode}` : '/join')
-    } else {
-      router.push('/login?from=' + (roomCode ? `/join?code=${roomCode}` : '/join'))
-    }
+    console.log('Tourist click - redirecting to login with join return path');
+    const destination = roomCode ? `/join?code=${roomCode}` : '/join';
+    const loginPath = `/login?from=${encodeURIComponent(destination)}`;
+    console.log('Redirecting to:', loginPath);
+    router.push(loginPath);
   }
 
   if (loading) {

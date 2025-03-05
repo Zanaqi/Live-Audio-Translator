@@ -1,6 +1,5 @@
 // lib/db/models/User.ts
 import mongoose, { Schema, model, Model } from 'mongoose';
-import { cache } from 'react';
 
 export interface IUser {
   id: string;
@@ -18,6 +17,13 @@ export interface IUser {
   }[];
 }
 
+const roomEntrySchema = new Schema({
+  roomId: { type: String, required: true },
+  roomName: { type: String, required: true },
+  role: { type: String, required: true, enum: ['guide', 'tourist'] },
+  joinedAt: { type: Date, default: Date.now }
+});
+
 const userSchema = new Schema<IUser>({
   id: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
@@ -26,21 +32,10 @@ const userSchema = new Schema<IUser>({
   role: { type: String, required: true, enum: ['guide', 'tourist'] },
   preferredLanguage: { type: String },
   createdAt: { type: Date, default: Date.now },
-  rooms: [{
-    roomId: { type: String, required: true },
-    roomName: { type: String, required: true },
-    role: { type: String, required: true, enum: ['guide', 'tourist'] },
-    joinedAt: { type: Date, default: Date.now }
-  }]
+  rooms: [roomEntrySchema]
 });
 
-// Use cache to prevent multiple model creation
-const createModel = cache(() => {
-  // Check if the model exists first
-  if (mongoose.models.User) {
-    return mongoose.models.User as Model<IUser>;
-  }
-  return model<IUser>('User', userSchema);
-});
+// Check if the model exists first
+const User = mongoose.models.User || model<IUser>('User', userSchema);
 
-export default createModel();
+export default User;
