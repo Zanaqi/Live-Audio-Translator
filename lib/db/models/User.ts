@@ -12,14 +12,17 @@ export interface IUser {
   rooms: {
     roomId: string;
     roomName: string;
+    roomCode?: string;
     role: 'guide' | 'tourist';
     joinedAt: Date;
   }[];
 }
 
+
 const roomEntrySchema = new Schema({
   roomId: { type: String, required: true },
   roomName: { type: String, required: true },
+  roomCode: { type: String },
   role: { type: String, required: true, enum: ['guide', 'tourist'] },
   joinedAt: { type: Date, default: Date.now }
 });

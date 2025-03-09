@@ -1,4 +1,3 @@
-// lib/db/models/Room.ts
 import mongoose, { Schema, model, Model } from 'mongoose';
 
 export interface IParticipant {
@@ -8,7 +7,6 @@ export interface IParticipant {
   preferredLanguage?: string;
   socketId?: string;
   name: string;
-  // Add user reference
   userId: string;
 }
 
@@ -20,7 +18,6 @@ export interface IRoom {
   createdAt: Date;
   active: boolean;
   participants: IParticipant[];
-  // Add user reference
   createdBy: string;
 }
 
@@ -31,7 +28,7 @@ const participantSchema = new Schema<IParticipant>({
     preferredLanguage: { type: String },
     socketId: { type: String },
     name: { type: String, required: true },
-    userId: { type: String, required: true } // Add user reference
+    userId: { type: String, required: true } 
 });
 
 const roomSchema = new Schema<IRoom>({
@@ -42,7 +39,7 @@ const roomSchema = new Schema<IRoom>({
   createdAt: { type: Date, default: Date.now },
   active: { type: Boolean, default: true },
   participants: [participantSchema],
-  createdBy: { type: String, required: true } // Add user reference
+  createdBy: { type: String, required: true }
 });
 
 // Safely define Room model

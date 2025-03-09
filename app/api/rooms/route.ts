@@ -1,4 +1,3 @@
-// app/api/rooms/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { mongoRoomStore } from '@/lib/store/mongoRoomStore';
 import { AuthService } from '@/lib/services/authService';
@@ -80,7 +79,7 @@ export async function POST(req: NextRequest) {
     });
     
     // Add room to user's history
-    await AuthService.addRoomToUser(user.id, roomId, name, 'guide');
+    await AuthService.addRoomToUser(user.id, roomId, name, 'guide', roomCode);
     
     return NextResponse.json({
       id: room.id,

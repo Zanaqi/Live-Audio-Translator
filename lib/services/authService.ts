@@ -1,10 +1,10 @@
-// lib/services/authService.ts
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { jwtVerify } from 'jose';
 import connectToDatabase from '../db/mongodb';
 import User, { IUser } from '../db/models/User';
 import { generateToken } from '../utils/authHelper';
+import { mongoRoomStore } from '../store/mongoRoomStore';
 
 export interface AuthResponse {
   success: boolean;
@@ -171,8 +171,36 @@ export class AuthService {
         return [];
       }
       
-      console.log('User rooms:', user.rooms);
-      return user.rooms || [];
+      // If the user's rooms field doesn't already contain roomCode, we need to fetch it
+      const userRooms = user.rooms || [];
+      
+      // If user rooms already have roomCode, just return them
+      if (userRooms.length > 0 && userRooms[0].roomCode) {
+        console.log('User rooms with codes already available:', userRooms);
+        return userRooms;
+      }
+      
+      // Otherwise, fetch the roomCode for each room
+      const roomsWithCodes = await Promise.all(userRooms.map(async (room) => {
+        try {
+          // Fetch the room to get its code
+          const fullRoom = await mongoRoomStore.getRoom(room.roomId);
+          
+          return {
+            ...room,
+            roomCode: fullRoom?.code || ''
+          };
+        } catch (error) {
+          console.error('Error fetching room code:', error);
+          return {
+            ...room,
+            roomCode: ''
+          };
+        }
+      }));
+      
+      console.log('User rooms with codes:', roomsWithCodes);
+      return roomsWithCodes;
     } catch (error) {
       console.error('Error getting user rooms:', error);
       return [];
@@ -183,11 +211,23 @@ export class AuthService {
     userId: string,
     roomId: string,
     roomName: string,
-    role: 'guide' | 'tourist'
+    role: 'guide' | 'tourist',
+    roomCode?: string
   ) {
     try {
-      console.log('Adding room to user:', { userId, roomId, roomName, role });
+      console.log('Adding room to user:', { userId, roomId, roomName, role, roomCode });
       await connectToDatabase();
+      
+      // If roomCode wasn't provided, try to get it
+      let code = roomCode;
+      if (!code) {
+        try {
+          const room = await mongoRoomStore.getRoom(roomId);
+          code = room?.code;
+        } catch (error) {
+          console.warn('Could not get room code:', error);
+        }
+      }
       
       const result = await User.updateOne(
         { id: userId },
@@ -196,6 +236,7 @@ export class AuthService {
             rooms: {
               roomId,
               roomName,
+              roomCode: code,
               role,
               joinedAt: new Date()
             }
@@ -207,6 +248,24 @@ export class AuthService {
       return result.modifiedCount > 0;
     } catch (error) {
       console.error('Error adding room to user:', error);
+      return false;
+    }
+  }
+  
+  static async removeRoomFromUser(userId: string, roomId: string): Promise<boolean> {
+    try {
+      console.log('Removing room from user:', { userId, roomId });
+      await connectToDatabase();
+      
+      const result = await User.updateOne(
+        { id: userId },
+        { $pull: { rooms: { roomId: roomId } } }
+      );
+      
+      console.log('Update result:', result);
+      return result.modifiedCount > 0;
+    } catch (error) {
+      console.error('Error removing room from user:', error);
       return false;
     }
   }

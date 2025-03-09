@@ -168,6 +168,26 @@ export class MongoRoomStore {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     return code;
   }
+
+  public async deleteRoom(roomId: string): Promise<boolean> {
+    try {
+      await connectToDatabase();
+      
+      // First, deactivate the room
+      const deactivateResult = await Room.updateOne(
+        { id: roomId },
+        { $set: { active: false } }
+      );
+      
+      const deleteResult = await Room.deleteOne({ id: roomId });
+      return deleteResult.deletedCount > 0;
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting room:', error);
+      return false;
+    }
+  }
 }
 
 export const mongoRoomStore = MongoRoomStore.getInstance();

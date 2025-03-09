@@ -22,6 +22,7 @@
     "events": "^3.3.0",
     "jose": "^6.0.8",
     "jsonwebtoken": "^9.0.2",
+    "live-audio-translator": "file:",
     "lodash": "^4.x.x",
     "lucide-react": "^0.475.0",
     "mongodb": "^6.13.1",

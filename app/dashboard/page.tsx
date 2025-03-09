@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 interface Room {
   roomId: string;
   roomName: string;
+  roomCode: string;
   role: 'guide' | 'tourist';
   joinedAt: Date;
 }
@@ -31,7 +32,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchRooms = async () => {
       if (!user) return;
-  
+    
       try {
         console.log('Fetching rooms for user:', user.id);
         const token = localStorage.getItem('token');
@@ -39,7 +40,7 @@ export default function Dashboard() {
         if (!token) {
           throw new Error('No authentication token');
         }
-  
+    
         console.log('Making request to /api/auth/user/rooms');
         const response = await fetch('/api/auth/user/rooms', {
           headers: {
@@ -47,16 +48,26 @@ export default function Dashboard() {
             'Content-Type': 'application/json'
           }
         });
-  
+    
         console.log('Response status:', response.status);
         if (!response.ok) {
           const text = await response.text();
           console.error('Error response:', text);
           throw new Error('Failed to fetch rooms');
         }
-  
+    
         const data = await response.json();
         console.log('Received rooms data:', data);
+        
+        // Log each room to inspect the roomCode field
+        data.rooms?.forEach((room: any, index: number) => {
+          console.log(`Room ${index}:`, room);
+          console.log(`  - roomId: ${room.roomId}`);
+          console.log(`  - roomName: ${room.roomName}`);
+          console.log(`  - roomCode: ${room.roomCode}`);
+          console.log(`  - role: ${room.role}`);
+        });
+        
         setRooms(data.rooms || []);
       } catch (error) {
         console.error('Error fetching rooms:', error);
@@ -210,7 +221,9 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <Link
-                        href={`/${room.role}?code=${room.roomId}`}
+                        href={room.role === 'guide' 
+                          ? `/guide/room/${room.roomId}` 
+                          : `/join/room/${room.roomCode}`}
                         className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
                       >
                         Rejoin Room
