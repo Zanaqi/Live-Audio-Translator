@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mic, MicOff, Users, Share2, Crown, Send, RefreshCw } from 'lucide-react'
+import { Mic, MicOff, Users, Share2, Crown, RefreshCw } from 'lucide-react'
 import QRCode from 'react-qr-code'
 import { useAuth } from '@/lib/context/AuthContext'
 import { wsManager } from '@/lib/utils/WebSocketManager'
@@ -22,6 +22,8 @@ export default function GuidePage() {
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [currentTranscript, setCurrentTranscript] = useState('');
+  const [translations, setTranslations] = useState<{[lang: string]: string}>({});
   
   // Check authentication
   useEffect(() => {
@@ -47,6 +49,15 @@ export default function GuidePage() {
         case 'participant_joined':
         case 'participant_left':
           setParticipants(data.participantCount);
+          break;
+          
+        case 'translation':
+          if (data.language && data.text) {
+            setTranslations(prev => ({
+              ...prev,
+              [data.language]: data.text
+            }));
+          }
           break;
           
         case 'error':
@@ -129,6 +140,17 @@ export default function GuidePage() {
     } finally {
       setCreatingRoom(false);
     }
+  };
+
+  // Handler for transcript changes from AudioTranslator
+  const handleTranscriptChange = (transcript: string) => {
+    console.log('Transcript changed:', transcript);
+    setCurrentTranscript(transcript);
+  };
+
+  // Handler for translation changes
+  const handleTranslationChange = (translation: string) => {
+    console.log('Translation received:', translation);
   };
 
   // Leave room
@@ -275,9 +297,32 @@ export default function GuidePage() {
             {/* Audio Translator */}
             <AudioTranslator
               targetLanguage="English"
-              onTranscriptChange={console.log}
-              onTranslationChange={console.log}
+              onTranscriptChange={handleTranscriptChange}
+              onTranslationChange={handleTranslationChange}
             />
+
+            {/* Current Transcript Display */}
+            {currentTranscript && (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium text-gray-700 mb-2">Current Transcript:</h3>
+                <p className="text-gray-800">{currentTranscript}</p>
+              </div>
+            )}
+            
+            {/* Active Translations Display */}
+            {Object.keys(translations).length > 0 && (
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <h3 className="font-medium text-gray-700 mb-2">Active Translations:</h3>
+                <div className="space-y-2">
+                  {Object.entries(translations).map(([language, text]) => (
+                    <div key={language} className="border-b pb-2">
+                      <span className="font-medium text-purple-600">{language}: </span>
+                      <span className="text-gray-800">{text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Controls */}
             <div className="flex justify-center space-x-4">

@@ -3,17 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"next dev\" \"node server.js\" \"python lib/translation_server.py\"",
     "build": "next build",
-    "start": "next start",
+    "start": "concurrently \"next start\" \"node server.js\" \"python lib/translation_server.py\"",
     "lint": "next lint",
-    "clean": "rm -rf .next && echo 'Next.js cache cleared'"
+    "clean": "rm -rf .next && echo 'Next.js cache cleared'",
+    "start:ws": "node server.js",
+    "start:translation": "python lib/translation_server.py",
+    "start:next": "next start",
+    "dev:next": "next dev"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "chinese-converter": "^0.0.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "concurrently": "^8.2.2",
     "events": "^3.3.0",
     "jose": "^6.0.8",
     "jsonwebtoken": "^9.0.2",

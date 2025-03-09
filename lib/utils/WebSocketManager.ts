@@ -191,6 +191,21 @@ class WebSocketManager extends EventEmitter {
   }
   
   sendMessage(message: any): boolean {
+    // Ensure message has a roomId if we have a config
+    if (this.config && !message.roomId && message.type !== 'ping') {
+      message.roomId = this.config.roomId;
+    }
+    
+    // For transcript messages, add additional information
+    if (message.type === 'transcript') {
+      message = {
+        ...message,
+        participantId: this.config?.participantId,
+        role: this.config?.role,
+        timestamp: Date.now()
+      };
+    }
+    
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // Queue message for later if not connected
       this.messageQueue.push(message);
@@ -267,13 +282,16 @@ class WebSocketManager extends EventEmitter {
   }
   
   // Helper methods for common message types
-  sendSpeech(text: string): boolean {
+  sendTranscript(text: string): boolean {
     if (!this.config) return false;
     
     return this.sendMessage({
-      type: 'speech',
+      type: 'transcript',
       roomId: this.config.roomId,
-      text
+      text,
+      participantId: this.config.participantId,
+      role: this.config.role,
+      timestamp: Date.now()
     });
   }
   
@@ -284,7 +302,8 @@ class WebSocketManager extends EventEmitter {
       type: 'tourist_message',
       roomId: this.config.roomId,
       text,
-      language
+      language,
+      participantId: this.config.participantId
     });
   }
 

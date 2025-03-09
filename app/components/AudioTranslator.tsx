@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { AudioProcessor } from '@/lib/utils/audioUtils';
 import { performanceMonitor } from '@/lib/utils/performanceMonitor';
 import { Mic, MicOff, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { wsManager } from '@/lib/utils/WebSocketManager';
 
 interface AudioTranslatorProps {
   targetLanguage: string;
@@ -21,9 +22,25 @@ export default function AudioTranslator({
   const [isVoiceDetected, setIsVoiceDetected] = useState(false);
   const [currentWord, setCurrentWord] = useState('');
   const [isBrowser, setIsBrowser] = useState(false);
+  const [transcript, setTranscript] = useState('');
   
   const audioProcessorRef = useRef<AudioProcessor | null>(null);
   const recognitionRef = useRef<any>(null);
+
+  // Subscribe to translation events from WebSocket
+  useEffect(() => {
+    const handleTranslation = (data: any) => {
+      if (data.type === 'translation' && onTranslationChange) {
+        onTranslationChange(data.text);
+      }
+    };
+    
+    wsManager.on('translation', handleTranslation);
+    
+    return () => {
+      wsManager.removeListener('translation', handleTranslation);
+    };
+  }, [onTranslationChange]);
 
   // Check if browser is supported
   useEffect(() => {
@@ -37,6 +54,18 @@ export default function AudioTranslator({
       if (!('webkitSpeechRecognition' in window)) {
         setError('Your browser does not support speech recognition');
       }
+    }
+  }, []);
+
+  // Function to send transcript to WebSocket
+  const sendTranscriptToWS = useCallback((text: string) => {
+    console.log('Sending transcript to WebSocket:', text);
+    if (wsManager.isConnected() && text.trim()) {
+      wsManager.sendMessage({
+        type: 'transcript',
+        text: text,
+        sourceLanguage: 'English' // Assuming guide speaks English
+      });
     }
   }, []);
 
@@ -70,6 +99,7 @@ export default function AudioTranslator({
         recognitionRef.current = new SpeechRecognition();
         recognitionRef.current.continuous = true;
         recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-US'; // Set to English for the guide
 
         recognitionRef.current.onstart = () => {
           setIsRecording(true);
@@ -92,9 +122,15 @@ export default function AudioTranslator({
             // Measure latency
             const endTime = performance.now();
             performanceMonitor.recordLatency(startTime, endTime);
+            
+            // Send final transcript to WebSocket
+            sendTranscriptToWS(transcript);
           }
 
-          onTranscriptChange?.(transcript);
+          setTranscript(transcript);
+          if (onTranscriptChange) {
+            onTranscriptChange(transcript);
+          }
         };
 
         recognitionRef.current.onerror = (event: any) => {
@@ -203,6 +239,13 @@ export default function AudioTranslator({
             </div>
           )}
         </div>
+
+        {/* Current transcript */}
+        {transcript && (
+          <div className="w-full p-3 bg-gray-50 rounded-lg my-2">
+            <p className="text-gray-700">{transcript}</p>
+          </div>
+        )}
 
         {/* Audio Level Meter */}
         <div className="w-full space-y-1">

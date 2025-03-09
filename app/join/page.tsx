@@ -71,6 +71,11 @@ export default function JoinPage() {
         case 'translation':
           setTranslations(prev => [...prev, data.text]);
           setTranslation(data.text);
+          
+          // Auto-play speech if not already playing
+          if (!isPlaying && data.text) {
+            speakTranslation(data.text);
+          }
           break;
           
         case 'error':
@@ -85,7 +90,7 @@ export default function JoinPage() {
     return () => {
       wsManager.removeListener('message', handleMessage);
     };
-  }, []);
+  }, [isPlaying]); // Added isPlaying as dependency for auto-speak feature
 
   // Monitor WebSocket connection
   useEffect(() => {
@@ -150,27 +155,20 @@ export default function JoinPage() {
         }),
       });
 
-      const responseText = await response.text();
-      console.log('Join room response:', responseText);
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('Failed to parse response:', e);
-        throw new Error('Invalid response from server');
-      }
-
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Join room error response:', errorText);
+        
         if (response.status === 404) {
           throw new Error('Room not found. Please check the code and try again.');
         } else if (response.status === 401) {
           throw new Error('Authentication failed. Please log in again.');
-        } else if (data.error) {
-          throw new Error(data.error);
         }
         throw new Error('Failed to join room');
       }
+
+      const data = await response.json();
+      console.log('Join room response:', data);
 
       // Connect to WebSocket with room details
       await wsManager.connect({
@@ -197,17 +195,18 @@ export default function JoinPage() {
   };
 
   // Text-to-speech for translation
-  const speakTranslation = () => {
-    if (!translation) return;
+  const speakTranslation = (textToSpeak: string = translation) => {
+    if (!textToSpeak) return;
     
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(translation);
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.lang = getLangCode(user?.preferredLanguage || '');
       
       utterance.onstart = () => setIsPlaying(true);
       utterance.onend = () => setIsPlaying(false);
+      utterance.onerror = () => setIsPlaying(false);
       
       window.speechSynthesis.speak(utterance);
     } else {
