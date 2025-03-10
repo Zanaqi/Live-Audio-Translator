@@ -218,17 +218,14 @@ export class AuthService {
       console.log('Adding room to user:', { userId, roomId, roomName, role, roomCode });
       await connectToDatabase();
       
-      // If roomCode wasn't provided, try to get it
-      let code = roomCode;
-      if (!code) {
-        try {
-          const room = await mongoRoomStore.getRoom(roomId);
-          code = room?.code;
-        } catch (error) {
-          console.warn('Could not get room code:', error);
-        }
-      }
-      
+      // First, remove any existing entries for this room
+      const removeResult = await User.updateOne(
+        { id: userId },
+        { $pull: { rooms: { roomId: roomId } } }
+      );
+      console.log('Removed existing room entries:', removeResult);
+  
+      // Then add the new entry
       const result = await User.updateOne(
         { id: userId },
         {
@@ -236,7 +233,7 @@ export class AuthService {
             rooms: {
               roomId,
               roomName,
-              roomCode: code,
+              roomCode,
               role,
               joinedAt: new Date()
             }
@@ -244,7 +241,7 @@ export class AuthService {
         }
       );
       
-      console.log('Update result:', result);
+      console.log('Added new room entry:', result);
       return result.modifiedCount > 0;
     } catch (error) {
       console.error('Error adding room to user:', error);

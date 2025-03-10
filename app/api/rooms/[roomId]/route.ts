@@ -1,4 +1,3 @@
-// app/api/rooms/[roomId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { mongoRoomStore } from '@/lib/store/mongoRoomStore';
 import { AuthService } from '@/lib/services/authService';

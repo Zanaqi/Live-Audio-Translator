@@ -1,4 +1,3 @@
-// lib/store/mongoRoomStore.ts
 import connectToDatabase from '../db/mongodb';
 import Room, { IRoom, IParticipant } from '../db/models/Room';
 import { v4 as uuidv4 } from 'uuid';

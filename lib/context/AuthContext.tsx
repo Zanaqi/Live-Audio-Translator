@@ -172,11 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      setLoading(true);
       // Call logout endpoint to clear cookie
       await fetch('/api/auth/logout', {
         method: 'POST',
       });
-
+  
       // Clear local storage
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -184,15 +185,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Update state
       setUser(null);
       
-      // Redirect to login
-      router.push('/login');
+      // Force reload to clear any cached state
+      window.location.href = '/login';
     } catch (error) {
       console.error('Logout error:', error);
       // Still clear local state even if server request fails
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
-      router.push('/login');
+      window.location.href = '/login';
+    } finally {
+      setLoading(false);
     }
   };
 

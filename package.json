@@ -11,7 +11,8 @@
     "start:ws": "node server.js",
     "start:translation": "python lib/translation_server.py",
     "start:next": "next start",
-    "dev:next": "next dev"
+    "dev:next": "next dev",
+    "migrate:rooms": "ts-node --project scripts/tsconfig.json scripts/migrate-rooms.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -52,6 +53,7 @@
     "autoprefixer": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
+    "ts-node": "^10.9.2",
     "typescript": "latest"
   }
 }

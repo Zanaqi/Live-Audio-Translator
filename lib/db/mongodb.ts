@@ -1,4 +1,3 @@
-// lib/db/mongodb.ts
 import mongoose from 'mongoose';
 
 // Get MongoDB URI from environment variable

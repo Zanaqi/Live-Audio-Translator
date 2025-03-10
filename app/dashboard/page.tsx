@@ -15,7 +15,7 @@ interface Room {
 }
 
 export default function Dashboard() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +23,11 @@ export default function Dashboard() {
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!loading && !user) {
+    const token = localStorage.getItem('token');
+    if (!loading && (!user || !token)) {
+      console.log('No user or token, redirecting to login');
       router.push('/login');
+      return;
     }
   }, [loading, user, router]);
 
@@ -32,16 +35,18 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchRooms = async () => {
       if (!user) return;
+
+      setIsLoadingRooms(true);
+
+      await cleanupRooms();
     
       try {
-        console.log('Fetching rooms for user:', user.id);
         const token = localStorage.getItem('token');
-        
         if (!token) {
           throw new Error('No authentication token');
         }
-    
-        console.log('Making request to /api/auth/user/rooms');
+
+        setIsLoadingRooms(true);
         const response = await fetch('/api/auth/user/rooms', {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -49,25 +54,18 @@ export default function Dashboard() {
           }
         });
     
-        console.log('Response status:', response.status);
         if (!response.ok) {
-          const text = await response.text();
-          console.error('Error response:', text);
+          if (response.status === 401) {
+            // Token expired or invalid
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            router.push('/login');
+            return;
+          }
           throw new Error('Failed to fetch rooms');
         }
     
         const data = await response.json();
-        console.log('Received rooms data:', data);
-        
-        // Log each room to inspect the roomCode field
-        data.rooms?.forEach((room: any, index: number) => {
-          console.log(`Room ${index}:`, room);
-          console.log(`  - roomId: ${room.roomId}`);
-          console.log(`  - roomName: ${room.roomName}`);
-          console.log(`  - roomCode: ${room.roomCode}`);
-          console.log(`  - role: ${room.role}`);
-        });
-        
         setRooms(data.rooms || []);
       } catch (error) {
         console.error('Error fetching rooms:', error);
@@ -80,7 +78,35 @@ export default function Dashboard() {
     if (user) {
       fetchRooms();
     }
-  }, [user]);
+  }, [user, router]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      // The logout function will handle the redirect
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Force reload as fallback
+      window.location.href = '/login';
+    }
+  };
+
+  const cleanupRooms = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+  
+      await fetch('/api/auth/user/cleanup', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+    } catch (error) {
+      console.error('Error cleaning up rooms:', error);
+    }
+  };
 
   const EmptyState = () => (
     <div className="text-center py-12 bg-white rounded-lg shadow">
@@ -137,11 +163,7 @@ export default function Dashboard() {
             <div className="flex items-center space-x-4">
               <span className="text-gray-700">{user.name}</span>
               <button
-                onClick={() => {
-                  localStorage.removeItem('token');
-                  localStorage.removeItem('user');
-                  router.push('/login');
-                }}
+                onClick={handleLogout}
                 className="text-gray-600 hover:text-gray-900"
               >
                 Logout

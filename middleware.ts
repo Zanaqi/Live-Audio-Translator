@@ -51,19 +51,18 @@ export async function middleware(request: NextRequest) {
       
       // Check if token has minimum required payload
       if (tokenPayload && tokenPayload.id && tokenPayload.role) {
-        // Manually check if token is expired
         if (tokenPayload.exp && tokenPayload.exp * 1000 > Date.now()) {
           isValidToken = true;
-          console.log('Token is valid for user:', tokenPayload.id);
         } else {
           console.log('Token is expired');
+          // For expired tokens, redirect to login
+          return NextResponse.redirect(new URL('/login', request.url));
         }
-      } else {
-        console.log('Token payload missing required fields');
       }
     } catch (error) {
       console.error('Token verification failed:', error);
       isValidToken = false;
+      return NextResponse.redirect(new URL('/login', request.url));
     }
   }
 
