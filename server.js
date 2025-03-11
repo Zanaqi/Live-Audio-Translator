@@ -1,5 +1,3 @@
-// server.js
-// Import the WebSocket server
 const wss = require('./lib/server/wsServer');
 
 console.log('WebSocket server running on port 3002...');

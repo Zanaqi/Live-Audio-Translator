@@ -1,4 +1,3 @@
-// lib/utils/WebSocketManager.ts
 import { EventEmitter } from 'events'
 
 export interface ConnectionConfig {
