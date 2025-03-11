@@ -29,7 +29,7 @@
     "mongodb": "^6.13.1",
     "mongoose": "^8.10.1",
     "next": "latest",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "^2.6.9",
     "pinyin": "^4.0.0-alpha.2",
     "react": "latest",
     "react-dom": "latest",
