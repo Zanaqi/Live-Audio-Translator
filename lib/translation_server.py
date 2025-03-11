@@ -31,6 +31,34 @@ def get_model_name(target_language):
     print(f"Selected model '{model_name}' for language '{target_language}'")
     return model_name
 
+def apply_context_adaptation(text, base_translation, source_lang, target_lang, context_info):
+    """Apply context-aware adaptations to the base translation"""
+    
+    adapted_translation = base_translation
+    
+    # Apply domain-specific adaptations
+    if context_info and 'domain' in context_info:
+        domain = context_info['domain']
+        if domain == 'museum_tour' and target_lang == 'fr':
+            # French museum context adaptations
+            adapted_translation = adapted_translation.replace('pièce', 'œuvre')
+            adapted_translation = adapted_translation.replace('montrer', 'présenter')
+        
+        elif domain == 'art_gallery' and target_lang == 'fr':
+            # French art gallery context adaptations
+            adapted_translation = adapted_translation.replace('pièce', 'tableau')
+    
+    # Apply name completions
+    if context_info and 'key_references' in context_info:
+        references = context_info['key_references']
+        for name, confidence in references.items():
+            if confidence > 0.7:
+                if 'leonardo' in adapted_translation.lower() and 'leonardo' in name.lower():
+                    adapted_translation = adapted_translation.replace('Leonardo', 'Leonardo da Vinci')
+    
+    # Return the adapted translation
+    return adapted_translation
+
 @app.route('/translate', methods=['POST'])
 def handle_translation():
     try:
@@ -43,6 +71,7 @@ def handle_translation():
 
         text = data.get('text', '')
         target_language = data.get('targetLanguage', 'French')
+        context_info = data.get('context', None)  # Get context information
 
         print(f"Processing translation request: '{text}' to {target_language}")
 
@@ -50,9 +79,22 @@ def handle_translation():
             return jsonify({"error": "No text provided"}), 400
 
         try:
-            result = translate_text(text, target_language)
-            print("Translation result:", result)
-            return jsonify(result)
+            # Get base translation
+            base_translation = translate_text(text, target_language)
+            
+            # Apply context adaptation if context info provided
+            if context_info:
+                adapted_translation = apply_context_adaptation(
+                    text, 
+                    base_translation['translation'], 
+                    'en',  # Assuming source language is English
+                    target_language.lower(),
+                    context_info
+                )
+                base_translation['translation'] = adapted_translation
+            
+            print("Translation result:", base_translation)
+            return jsonify(base_translation)
         except Exception as e:
             print("Translation error:", str(e))
             return jsonify({"error": f"Translation failed: {str(e)}"}), 500

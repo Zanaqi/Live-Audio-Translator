@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Volume2, VolumeX, Languages, Users, RefreshCw } from 'lucide-react'
+import { Volume2, VolumeX, Languages, Users, RefreshCw, Tag, Info } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext'
 import { wsManager } from '@/lib/utils/WebSocketManager'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -23,6 +23,9 @@ export default function JoinRoomPage() {
   const [roomId, setRoomId] = useState('');
   const [transcript, setTranscript] = useState('');
   const [translation, setTranslation] = useState('');
+  const [translationConfidence, setTranslationConfidence] = useState(0);
+  const [activeContexts, setActiveContexts] = useState<string[]>([]);
+  const [showContextInfo, setShowContextInfo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [participants, setParticipants] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -151,6 +154,15 @@ export default function JoinRoomPage() {
         case 'translation':
           setTranslations(prev => [...prev, data.text]);
           setTranslation(data.text);
+
+          // Store context information
+          if (data.confidence) {
+            setTranslationConfidence(data.confidence);
+          }
+          
+          if (data.contexts) {
+            setActiveContexts(data.contexts);
+          }
           
           // Auto-play speech if not already playing
           if (!isPlaying && data.text) {
@@ -171,7 +183,19 @@ export default function JoinRoomPage() {
     return () => {
       wsManager.removeListener('message', handleMessage);
     };
-  }, [isPlaying]); // Added isPlaying as dependency for auto-speak feature
+  }, [isPlaying]);
+
+  // Get context badge color based on confidence
+  const getContextBadgeColor = (confidence: number) => {
+    if (confidence > 0.8) return 'bg-green-100 text-green-800';
+    if (confidence > 0.6) return 'bg-blue-100 text-blue-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
+  // Format context name for display
+  const formatContextName = (context: string) => {
+    return context.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
 
   // Monitor WebSocket connection
   useEffect(() => {
@@ -330,11 +354,55 @@ export default function JoinRoomPage() {
 
           {/* Translation */}
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-500">
-              Translation ({user?.preferredLanguage})
-            </h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-medium text-gray-500">
+                Translation ({user?.preferredLanguage})
+              </h3>
+              <button
+                onClick={() => setShowContextInfo(!showContextInfo)}
+                className="flex items-center text-xs text-teal-600 hover:text-teal-800"
+              >
+                <Info className="h-3 w-3 mr-1" />
+                {showContextInfo ? 'Hide Context' : 'Show Context'}
+              </button>
+            </div>
+            
             <div className="p-4 bg-teal-50 rounded-lg min-h-[100px]">
               <p className="text-gray-700">{translation || 'Translation will appear here...'}</p>
+              
+              {/* Translation confidence indicator */}
+              {translation && showContextInfo && (
+                <div className="mt-3 pt-3 border-t border-teal-100">
+                  <div className="flex items-center text-xs text-gray-500 mb-2">
+                    <span className="mr-1">Translation confidence:</span>
+                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${
+                          translationConfidence > 0.7 ? 'bg-green-500' : 
+                          translationConfidence > 0.5 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${translationConfidence * 100}%` }}
+                      />
+                    </div>
+                    <span className="ml-1">{Math.round(translationConfidence * 100)}%</span>
+                  </div>
+                  
+                  {/* Active contexts */}
+                  {activeContexts.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {activeContexts.map((context, index) => (
+                        <span 
+                          key={index}
+                          className={`px-2 py-1 rounded-full text-xs ${getContextBadgeColor(translationConfidence)}`}
+                        >
+                          <Tag className="h-3 w-3 inline mr-1" />
+                          {formatContextName(context)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
