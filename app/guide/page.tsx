@@ -1,173 +1,129 @@
+// app/guide/page.tsx
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mic, MicOff, Users, Share2, Crown, RefreshCw } from 'lucide-react'
 import QRCode from 'react-qr-code'
 import { useAuth } from '@/lib/context/AuthContext'
 import { wsManager } from '@/lib/utils/WebSocketManager'
 import AudioTranslator from '../components/AudioTranslator'
-import TranslationPreview from '../components/TranslationPreview'
-import ContextSettings from '../components/ContextSettings'
-import { useContextEngine } from '@/lib/hooks/useContextEngine'
-import { ContextData } from '@/lib/utils/contextEngine'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function GuidePage() {
-  const { user, loading } = useAuth()
-  const router = useRouter()
+  const { user, loading } = useAuth();
+  const router = useRouter();
   
-  // Local state 
-  const [roomName, setRoomName] = useState('')
-  const [roomCode, setRoomCode] = useState('')
-  const [roomUrl, setRoomUrl] = useState('')
-  const [participants, setParticipants] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [wsConnected, setWsConnected] = useState(false)
-  const [reconnecting, setReconnecting] = useState(false)
-  const [currentTranscript, setCurrentTranscript] = useState('')
-  const [translations, setTranslations] = useState<{[lang: string]: string}>({})
-  const [creatingRoom, setCreatingRoom] = useState(false)
-  const [deletingRoom, setDeletingRoom] = useState(false)
-
-  // Initialize context engine
-  const {
-    currentContext,
-    updateContext,
-    enhanceTranslation,
-    setLanguages
-  } = useContextEngine({
-    initialContext: {
-      tourType: 'museum',
-      location: '',
-      subject: '',
-      currentTheme: '',
-      audienceType: 'general'
-    },
-    sourceLanguage: 'en'
-  })
-
+  // Local state
+  const [roomName, setRoomName] = useState('');
+  const [participants, setParticipants] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [roomUrl, setRoomUrl] = useState('');
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [currentTranscript, setCurrentTranscript] = useState('');
+  const [translations, setTranslations] = useState<{[lang: string]: string}>({});
+  
   // Check authentication
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login')
+      router.push('/login');
     } else if (user?.role !== 'guide') {
-      router.push('/dashboard')
+      router.push('/dashboard');
     }
-  }, [user, loading, router])
+  }, [user, loading, router]);
 
   // Handle WebSocket setup
   useEffect(() => {
     const handleMessage = (data: any) => {
-      console.log('Received message:', data)
+      console.log('Received message:', data);
       
       switch (data.type) {
         case 'joined':
-          setParticipants(data.participantCount)
-          setError(null)
-          setReconnecting(false)
-          break
+          setParticipants(data.participantCount);
+          setError(null);
+          setReconnecting(false);
+          break;
           
         case 'participant_joined':
         case 'participant_left':
-          setParticipants(data.participantCount)
-          break
+          setParticipants(data.participantCount);
+          break;
           
         case 'translation':
           if (data.language && data.text) {
-            const enhancedTranslation = enhanceTranslation(currentTranscript, data.text)
             setTranslations(prev => ({
               ...prev,
-              [data.language]: enhancedTranslation
-            }))
+              [data.language]: data.text
+            }));
           }
-          break
+          break;
           
         case 'error':
-          console.error('WebSocket error:', data.message)
-          setError(data.message)
-          setReconnecting(false)
-          break
+          console.error('WebSocket error:', data.message);
+          setError(data.message);
+          setReconnecting(false);
+          break;
       }
-    }
+    };
 
-    wsManager.on('message', handleMessage)
+    wsManager.on('message', handleMessage);
     
     return () => {
-      wsManager.removeListener('message', handleMessage)
-    }
-  }, [currentTranscript, enhanceTranslation])
+      wsManager.removeListener('message', handleMessage);
+    };
+  }, []);
 
   // Monitor WebSocket connection
   useEffect(() => {
     const interval = setInterval(() => {
-      setWsConnected(wsManager.isConnected())
-    }, 1000)
+      setWsConnected(wsManager.isConnected());
+    }, 1000);
     
-    return () => clearInterval(interval)
-  }, [])
-
-  // Handle context changes
-  const handleContextChange = useCallback((newContext: Partial<ContextData>) => {
-    updateContext(newContext)
-  }, [updateContext])
-
-  // Handle transcript changes from AudioTranslator with context enhancement
-  const handleTranscriptChange = useCallback((transcript: string) => {
-    setCurrentTranscript(transcript)
-    
-    // Send context-enhanced transcript for translation
-    if (wsManager.isConnected()) {
-      wsManager.sendMessage({
-        type: 'transcript',
-        text: transcript,
-        context: currentContext,
-        sourceLanguage: 'en'
-      })
-    }
-  }, [currentContext])
+    return () => clearInterval(interval);
+  }, []);
 
   // Create a new room
   const createRoom = async () => {
     if (!roomName.trim() || !user) {
-      setError('Room name is required')
-      return
+      setError('Room name is required');
+      return;
     }
     
-    setCreatingRoom(true)
-    setError(null)
+    setCreatingRoom(true);
+    setError(null);
     
     try {
-      const token = localStorage.getItem('token')
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
       if (!token) {
-        throw new Error('Not authenticated')
+        throw new Error('Not authenticated');
       }
 
       const response = await fetch('/api/rooms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}` // Add token to headers
         },
         body: JSON.stringify({
           name: roomName,
           guideId: user.id,
           guideName: user.name
         }),
-      })
+      });
       
       if (!response.ok) {
-        throw new Error('Failed to create room')
+        throw new Error('Failed to create room');
       }
       
-      const data = await response.json()
+      const data = await response.json();
       
       // Generate URL for tourists
-      const baseUrl = window.location.origin
-      const tourUrl = `${baseUrl}/join?code=${data.code}`
-      setRoomUrl(tourUrl)
-      setRoomCode(data.code)
+      const baseUrl = window.location.origin;
+      const tourUrl = `${baseUrl}/join?code=${data.code}`;
+      setRoomUrl(tourUrl);
       
       // Connect to WebSocket
       await wsManager.connect({
@@ -176,52 +132,68 @@ export default function GuidePage() {
         role: 'guide',
         roomCode: data.code,
         guideName: user.name
-      })
+      });
       
     } catch (error) {
-      console.error('Error creating room:', error)
-      setError('Failed to create room. Please try again.')
+      console.error('Error creating room:', error);
+      setError('Failed to create room. Please try again.');
     } finally {
-      setCreatingRoom(false)
+      setCreatingRoom(false);
     }
-  }
+  };
 
-  // Manual reconnect
-  const handleReconnect = async () => {
-    if (!wsManager.getConfig()) return
-    
-    setError('Reconnecting...')
-    setReconnecting(true)
-    
-    try {
-      await wsManager.connect(wsManager.getConfig()!)
-    } catch (error) {
-      console.error('Failed to reconnect:', error)
-      setError('Failed to reconnect. Please try again.')
-      setReconnecting(false)
-    }
-  }
+  // Handler for transcript changes from AudioTranslator
+  const handleTranscriptChange = (transcript: string) => {
+    console.log('Transcript changed:', transcript);
+    setCurrentTranscript(transcript);
+  };
+
+  // Handler for translation changes
+  const handleTranslationChange = (translation: string) => {
+    console.log('Translation received:', translation);
+  };
 
   // Leave room
   const handleEndTour = async () => {
     try {
-      wsManager.disconnect()
-      setRoomUrl('')
-      setParticipants(0)
-      setError(null)
-      router.push('/dashboard')
+      // Disconnect WebSocket
+      wsManager.disconnect();
+      
+      // Clear state
+      setRoomUrl('');
+      setParticipants(0);
+      setError(null);
+      
+      // Navigate to dashboard
+      router.push('/dashboard');
     } catch (error) {
-      console.error('Error ending tour:', error)
-      setError('Failed to end tour')
+      console.error('Error ending tour:', error);
+      setError('Failed to end tour');
     }
-  }
+  };
+
+  // Manual reconnect
+  const handleReconnect = async () => {
+    if (!wsManager.getConfig()) return;
+    
+    setError('Reconnecting...');
+    setReconnecting(true);
+    
+    try {
+      await wsManager.connect(wsManager.getConfig()!);
+    } catch (error) {
+      console.error('Failed to reconnect:', error);
+      setError('Failed to reconnect. Please try again.');
+      setReconnecting(false);
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
       </div>
-    )
+    );
   }
 
   return (
@@ -295,18 +267,12 @@ export default function GuidePage() {
                 </div>
                 <div className="mt-2 text-center">
                   <div className="text-2xl font-bold text-purple-600">
-                    {roomCode}
+                    {roomUrl.split('code=')[1]}
                   </div>
                   <div className="text-sm text-gray-500">Room Code</div>
                 </div>
               </div>
             </div>
-
-            {/* Context Settings */}
-            <ContextSettings
-              context={currentContext || {}}
-              onContextChange={handleContextChange}
-            />
 
             {/* Connection Status */}
             <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
@@ -332,25 +298,38 @@ export default function GuidePage() {
             <AudioTranslator
               targetLanguage="English"
               onTranscriptChange={handleTranscriptChange}
+              onTranslationChange={handleTranslationChange}
             />
 
-            {/* Translation Previews */}
-            {Object.entries(translations).map(([lang, text]) => (
-              <TranslationPreview
-                key={lang}
-                originalText={currentTranscript}
-                translation={text}
-                context={currentContext}
-                language={lang}
-              />
-            ))}
+            {/* Current Transcript Display */}
+            {currentTranscript && (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium text-gray-700 mb-2">Current Transcript:</h3>
+                <p className="text-gray-800">{currentTranscript}</p>
+              </div>
+            )}
+            
+            {/* Active Translations Display */}
+            {Object.keys(translations).length > 0 && (
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <h3 className="font-medium text-gray-700 mb-2">Active Translations:</h3>
+                <div className="space-y-2">
+                  {Object.entries(translations).map(([language, text]) => (
+                    <div key={language} className="border-b pb-2">
+                      <span className="font-medium text-purple-600">{language}: </span>
+                      <span className="text-gray-800">{text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Controls */}
             <div className="flex justify-center space-x-4">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(roomUrl)
-                  alert('Room link copied to clipboard!')
+                  navigator.clipboard.writeText(roomUrl);
+                  alert('Room link copied to clipboard!');
                 }}
                 className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
               >
@@ -375,5 +354,5 @@ export default function GuidePage() {
         )}
       </div>
     </div>
-  )
+  );
 }
