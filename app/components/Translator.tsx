@@ -1,41 +1,41 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useCallback } from 'react'
-import { debounce } from 'lodash'
-import { TranslationBridge } from '@/lib/services/TranslationBridge'
+import { useState, useEffect, useCallback } from "react";
+import { debounce } from "lodash";
+import { TranslationBridge } from "@/lib/services/TranslationBridge";
 
 interface TranslatorProps {
   transcript: string | null;
 }
 
 export default function Translator({ transcript }: TranslatorProps) {
-  // State management
-  const [translation, setTranslation] = useState('')
-  const [targetLanguage, setTargetLanguage] = useState('French')
-  const [inputText, setInputText] = useState(transcript || '')
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const [isTranslating, setIsTranslating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showPinyin, setShowPinyin] = useState(false)
-  const [translationBridge, setTranslationBridge] = useState<TranslationBridge | null>(null)
+  const [translation, setTranslation] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("French");
+  const [inputText, setInputText] = useState(transcript || "");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showPinyin, setShowPinyin] = useState(false);
+  const [translationBridge, setTranslationBridge] =
+    useState<TranslationBridge | null>(null);
 
   // Update input text when transcript changes
   useEffect(() => {
-    setInputText(transcript || '')
-  }, [transcript])
+    setInputText(transcript || "");
+  }, [transcript]);
 
   // Initialize TranslationBridge
   useEffect(() => {
     const bridge = new TranslationBridge();
-    
-    bridge.on('connected', () => {
-      console.log('Connected to translation service');
+
+    bridge.on("connected", () => {
+      console.log("Connected to translation service");
       setError(null);
     });
 
-    bridge.on('error', (err) => {
-      console.error('Translation error:', err);
-      setError('Translation service error. Please try again.');
+    bridge.on("error", (err) => {
+      console.error("Translation error:", err);
+      setError("Translation service error. Please try again.");
       setIsTranslating(false);
     });
 
@@ -56,14 +56,14 @@ export default function Translator({ transcript }: TranslatorProps) {
 
       try {
         if (!translationBridge) {
-          throw new Error('Translation service not initialized');
+          throw new Error("Translation service not initialized");
         }
 
-        const textBlob = new Blob([text], { type: 'text/plain' });
+        const textBlob = new Blob([text], { type: "text/plain" });
         await translationBridge.translate(textBlob, targetLang);
       } catch (error) {
-        console.error('Translation error:', error);
-        setError('Translation failed. Please try again.');
+        console.error("Translation error:", error);
+        setError("Translation failed. Please try again.");
       } finally {
         setIsTranslating(false);
       }
@@ -74,7 +74,7 @@ export default function Translator({ transcript }: TranslatorProps) {
   // Handle language change
   const handleTargetLanguageChange = (newLanguage: string) => {
     setTargetLanguage(newLanguage);
-    setTranslation('');
+    setTranslation("");
     if (inputText) {
       debouncedTranslate(inputText, newLanguage);
     }
@@ -82,33 +82,33 @@ export default function Translator({ transcript }: TranslatorProps) {
 
   // Text-to-speech functionality
   const speakTranslation = () => {
-    if ('speechSynthesis' in window) {
+    if ("speechSynthesis" in window) {
       const utterance = new SpeechSynthesisUtterance(translation);
       utterance.lang = getLanguageCode(targetLanguage);
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       speechSynthesis.speak(utterance);
     } else {
-      setError('Text-to-speech is not supported in your browser.');
+      setError("Text-to-speech is not supported in your browser.");
     }
   };
 
   // Get language code for speech synthesis
   const getLanguageCode = (language: string): string => {
     const languageCodes: { [key: string]: string } = {
-      'French': 'fr-FR',
-      'Spanish': 'es-ES',
-      'German': 'de-DE',
-      'Italian': 'it-IT',
-      'Japanese': 'ja-JP',
-      'Chinese': 'zh-CN'
+      French: "fr-FR",
+      Spanish: "es-ES",
+      German: "de-DE",
+      Italian: "it-IT",
+      Japanese: "ja-JP",
+      Chinese: "zh-CN",
     };
-    return languageCodes[language] || 'en-US';
+    return languageCodes[language] || "en-US";
   };
 
   // Render Chinese translation with optional Pinyin
   const renderChineseTranslation = (text: string) => {
-    if (targetLanguage === 'Chinese') {
+    if (targetLanguage === "Chinese") {
       return (
         <div>
           <p className="text-gray-800">{text}</p>
@@ -122,7 +122,7 @@ export default function Translator({ transcript }: TranslatorProps) {
             onClick={() => setShowPinyin(!showPinyin)}
             className="mt-2 px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300"
           >
-            {showPinyin ? 'Hide' : 'Show'} Pinyin
+            {showPinyin ? "Hide" : "Show"} Pinyin
           </button>
         </div>
       );
@@ -133,10 +133,13 @@ export default function Translator({ transcript }: TranslatorProps) {
   return (
     <div className="mt-8 w-full max-w-md">
       <h2 className="text-2xl font-bold mb-4">Translator</h2>
-      
+
       {/* Input Section */}
       <div className="mb-4">
-        <label htmlFor="inputText" className="block text-sm font-medium text-gray-700 mb-2">
+        <label
+          htmlFor="inputText"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
           Text to Translate
         </label>
         <textarea
@@ -155,7 +158,10 @@ export default function Translator({ transcript }: TranslatorProps) {
 
       {/* Language Selection */}
       <div className="mb-4">
-        <label htmlFor="targetLanguage" className="block text-sm font-medium text-gray-700 mb-2">
+        <label
+          htmlFor="targetLanguage"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
           Target Language
         </label>
         <select
@@ -176,9 +182,7 @@ export default function Translator({ transcript }: TranslatorProps) {
 
       {/* Status and Error Messages */}
       {isTranslating && (
-        <div className="mb-4 text-gray-500">
-          Translating...
-        </div>
+        <div className="mb-4 text-gray-500">Translating...</div>
       )}
 
       {error && (
@@ -192,14 +196,14 @@ export default function Translator({ transcript }: TranslatorProps) {
         <div className="mt-4 p-4 bg-gray-100 rounded">
           <h3 className="text-lg font-semibold mb-2">Translation:</h3>
           {renderChineseTranslation(translation)}
-          
+
           <button
             onClick={speakTranslation}
             disabled={isSpeaking}
             className="mt-4 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 
                      disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {isSpeaking ? 'Speaking...' : 'Speak Translation'}
+            {isSpeaking ? "Speaking..." : "Speak Translation"}
           </button>
         </div>
       )}

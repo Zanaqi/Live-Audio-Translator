@@ -1,6 +1,5 @@
-// app/api/metrics/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import os from 'os';
+import { NextRequest, NextResponse } from "next/server";
+import os from "os";
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,14 +7,14 @@ export async function GET(req: NextRequest) {
     const cpus = os.cpus();
     let totalIdle = 0;
     let totalTick = 0;
-    
-    cpus.forEach(cpu => {
+
+    cpus.forEach((cpu) => {
       for (const type in cpu.times) {
         totalTick += cpu.times[type as keyof typeof cpu.times];
       }
       totalIdle += cpu.times.idle;
     });
-    
+
     const idlePercent = totalIdle / totalTick;
     const cpuUsage = Math.round((1 - idlePercent) * 100);
 
@@ -33,11 +32,14 @@ export async function GET(req: NextRequest) {
       memoryUsage,
       loadAverage: loadAvg[0], // 1 minute load average
       uptime: os.uptime(),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   } catch (error) {
-    console.error('Error getting system metrics:', error);
-    return NextResponse.json({ error: 'Failed to get system metrics' }, { status: 500 });
+    console.error("Error getting system metrics:", error);
+    return NextResponse.json(
+      { error: "Failed to get system metrics" },
+      { status: 500 }
+    );
   }
 }
 
@@ -47,13 +49,14 @@ export async function POST(req: NextRequest) {
     const data = await req.json();
     const { type, value } = data;
 
-    // Store metrics in database or monitoring service
-    // This is where you'd integrate with your monitoring solution
     console.log(`Received ${type} metric:`, value);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error storing metrics:', error);
-    return NextResponse.json({ error: 'Failed to store metrics' }, { status: 500 });
+    console.error("Error storing metrics:", error);
+    return NextResponse.json(
+      { error: "Failed to store metrics" },
+      { status: 500 }
+    );
   }
 }

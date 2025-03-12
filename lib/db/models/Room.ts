@@ -1,9 +1,9 @@
-import mongoose, { Schema, model, Model } from 'mongoose';
+import mongoose, { Schema, model, Model } from "mongoose";
 
 export interface IParticipant {
   id: string;
   roomId: string;
-  role: 'guide' | 'tourist';
+  role: "guide" | "tourist";
   preferredLanguage?: string;
   socketId?: string;
   name: string;
@@ -22,13 +22,13 @@ export interface IRoom {
 }
 
 const participantSchema = new Schema<IParticipant>({
-    id: { type: String, required: true },
-    roomId: { type: String, required: false },
-    role: { type: String, required: true, enum: ['guide', 'tourist'] },
-    preferredLanguage: { type: String },
-    socketId: { type: String },
-    name: { type: String, required: true },
-    userId: { type: String, required: true } 
+  id: { type: String, required: true },
+  roomId: { type: String, required: false },
+  role: { type: String, required: true, enum: ["guide", "tourist"] },
+  preferredLanguage: { type: String },
+  socketId: { type: String },
+  name: { type: String, required: true },
+  userId: { type: String, required: true },
 });
 
 const roomSchema = new Schema<IRoom>({
@@ -39,28 +39,26 @@ const roomSchema = new Schema<IRoom>({
   createdAt: { type: Date, default: Date.now },
   active: { type: Boolean, default: true },
   participants: [participantSchema],
-  createdBy: { type: String, required: true }
+  createdBy: { type: String, required: true },
 });
 
-// Safely define Room model
 let Room: Model<IRoom>;
 
 // Check if we're in a Node.js environment and if mongoose models is available
-if (typeof mongoose !== 'undefined' && mongoose.models) {
+if (typeof mongoose !== "undefined" && mongoose.models) {
   // First check if the model already exists to prevent model overwrite error
   if (mongoose.models.Room) {
     Room = mongoose.models.Room as Model<IRoom>;
   } else {
     // If model doesn't exist yet, create it
     try {
-      Room = model<IRoom>('Room', roomSchema);
+      Room = model<IRoom>("Room", roomSchema);
     } catch (error) {
-      console.error('Error creating Room model:', error);
+      console.error("Error creating Room model:", error);
       // Create a mock model
       Room = {
         findOne: () => Promise.resolve(null),
         find: () => Promise.resolve([]),
-        // Add other necessary methods
       } as unknown as Model<IRoom>;
     }
   }
@@ -69,7 +67,6 @@ if (typeof mongoose !== 'undefined' && mongoose.models) {
   Room = {
     findOne: () => Promise.resolve(null),
     find: () => Promise.resolve([]),
-    // Add other necessary methods
   } as unknown as Model<IRoom>;
 }
 

@@ -1,5 +1,3 @@
-// lib/utils/audioUtils.ts
-
 export interface AudioSettings {
   sampleRate: number;
   noiseThreshold: number;
@@ -11,7 +9,7 @@ const DEFAULT_SETTINGS: AudioSettings = {
   sampleRate: 16000,
   noiseThreshold: 0.01,
   silenceThreshold: 0.02,
-  minSpeechDuration: 300 // milliseconds
+  minSpeechDuration: 300, // milliseconds
 };
 
 export class AudioProcessor {
@@ -38,8 +36,8 @@ export class AudioProcessor {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: this.settings.sampleRate
-        }
+          sampleRate: this.settings.sampleRate,
+        },
       });
 
       const source = this.context.createMediaStreamSource(this.stream);
@@ -47,14 +45,14 @@ export class AudioProcessor {
       this.analyzer.fftSize = 2048;
 
       this.processor = this.context.createScriptProcessor(4096, 1, 1);
-      
+
       source.connect(this.analyzer);
       this.analyzer.connect(this.processor);
       this.processor.connect(this.context.destination);
 
       this.processor.onaudioprocess = this.handleAudioProcess.bind(this);
     } catch (error) {
-      console.error('Error initializing audio processor:', error);
+      console.error("Error initializing audio processor:", error);
       throw error;
     }
   }
@@ -62,14 +60,14 @@ export class AudioProcessor {
   private handleAudioProcess(event: AudioProcessingEvent): void {
     const inputData = event.inputBuffer.getChannelData(0);
     const processedData = this.processAudioChunk(inputData);
-    
+
     // Calculate audio level
     const level = this.calculateAudioLevel(processedData);
     this.onAudioLevel?.(level);
 
     // Voice activity detection
     const isSpeakingNow = level > this.settings.silenceThreshold;
-    
+
     if (isSpeakingNow && !this.isSpeaking) {
       this.speechStartTime = Date.now();
       this.isSpeaking = true;
@@ -85,28 +83,33 @@ export class AudioProcessor {
 
   private processAudioChunk(chunk: Float32Array): Float32Array {
     const processedChunk = new Float32Array(chunk.length);
-    
+
     // Apply noise gate
     for (let i = 0; i < chunk.length; i++) {
-      processedChunk[i] = Math.abs(chunk[i]) < this.settings.noiseThreshold ? 0 : chunk[i];
+      processedChunk[i] =
+        Math.abs(chunk[i]) < this.settings.noiseThreshold ? 0 : chunk[i];
     }
-    
+
     // Apply simple noise reduction
     let sum = 0;
     const windowSize = 3;
-    
+
     for (let i = 0; i < processedChunk.length; i++) {
       sum = 0;
       let count = 0;
-      
-      for (let j = Math.max(0, i - windowSize); j < Math.min(processedChunk.length, i + windowSize + 1); j++) {
+
+      for (
+        let j = Math.max(0, i - windowSize);
+        j < Math.min(processedChunk.length, i + windowSize + 1);
+        j++
+      ) {
         sum += processedChunk[j];
         count++;
       }
-      
+
       processedChunk[i] = sum / count;
     }
-    
+
     return processedChunk;
   }
 
@@ -122,7 +125,7 @@ export class AudioProcessor {
   public setCallbacks({
     onSpeechStart,
     onSpeechEnd,
-    onAudioLevel
+    onAudioLevel,
   }: {
     onSpeechStart?: () => void;
     onSpeechEnd?: () => void;
@@ -136,12 +139,12 @@ export class AudioProcessor {
   public convertToWav(pcmData: Float32Array): Blob {
     const buffer = new ArrayBuffer(44 + pcmData.length * 2);
     const view = new DataView(buffer);
-    
+
     // Write WAV header
-    writeString(view, 0, 'RIFF');
+    writeString(view, 0, "RIFF");
     view.setUint32(4, 36 + pcmData.length * 2, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
+    writeString(view, 8, "WAVE");
+    writeString(view, 12, "fmt ");
     view.setUint32(16, 16, true);
     view.setUint16(20, 1, true);
     view.setUint16(22, 1, true);
@@ -149,15 +152,15 @@ export class AudioProcessor {
     view.setUint32(28, this.settings.sampleRate * 2, true);
     view.setUint16(32, 2, true);
     view.setUint16(34, 16, true);
-    writeString(view, 36, 'data');
+    writeString(view, 36, "data");
     view.setUint32(40, pcmData.length * 2, true);
-    
+
     // Write PCM data
     for (let i = 0; i < pcmData.length; i++) {
-      view.setInt16(44 + i * 2, pcmData[i] * 0x7FFF, true);
+      view.setInt16(44 + i * 2, pcmData[i] * 0x7fff, true);
     }
-    
-    return new Blob([buffer], { type: 'audio/wav' });
+
+    return new Blob([buffer], { type: "audio/wav" });
   }
 
   public cleanup(): void {
@@ -166,17 +169,17 @@ export class AudioProcessor {
       this.processor.onaudioprocess = null;
       this.processor = null;
     }
-    
+
     if (this.analyzer) {
       this.analyzer.disconnect();
       this.analyzer = null;
     }
-    
+
     if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
+      this.stream.getTracks().forEach((track) => track.stop());
       this.stream = null;
     }
-    
+
     if (this.context) {
       this.context.close();
       this.context = null;

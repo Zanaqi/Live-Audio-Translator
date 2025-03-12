@@ -1,6 +1,5 @@
-// app/api/auth/login/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { AuthService } from '@/lib/services/authService';
+import { NextRequest, NextResponse } from "next/server";
+import { AuthService } from "@/lib/services/authService";
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,7 +7,7 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: "Missing required fields" },
         { status: 400 }
       );
     }
@@ -16,36 +15,30 @@ export async function POST(req: NextRequest) {
     const result = await AuthService.login(email, password);
 
     if (!result.success) {
-      return NextResponse.json(
-        { error: result.message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: result.message }, { status: 400 });
     }
 
     // Create response with cookie
     const response = NextResponse.json({
       success: true,
       user: result.user,
-      token: result.token
+      token: result.token,
     });
 
     // Set the cookie using Response
     response.cookies.set({
-      name: 'auth-token',
+      name: "auth-token",
       value: result.token!,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: '/',
+      path: "/",
     });
 
     return response;
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'Login failed' },
-      { status: 500 }
-    );
+    console.error("Login error:", error);
+    return NextResponse.json({ error: "Login failed" }, { status: 500 });
   }
 }

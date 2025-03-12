@@ -1,13 +1,13 @@
-'use client'
+"use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 interface User {
   id: string;
   name: string;
   email: string;
-  role: 'guide' | 'tourist';
+  role: "guide" | "tourist";
   preferredLanguage?: string;
 }
 
@@ -19,7 +19,7 @@ interface AuthContextType {
     email: string;
     password: string;
     name: string;
-    role: 'guide' | 'tourist';
+    role: "guide" | "tourist";
     preferredLanguage?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
@@ -45,10 +45,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         // Initialize as loading
         setLoading(true);
-        
+
         // Get token from localStorage only if in browser
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-        
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
         if (!token) {
           // No token found, not authenticated
           setUser(null);
@@ -58,10 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Verify token with the server
         try {
-          const response = await fetch('/api/auth/verify', {
+          const response = await fetch("/api/auth/verify", {
             headers: {
-              'Authorization': `Bearer ${token}`
-            }
+              Authorization: `Bearer ${token}`,
+            },
           });
 
           if (response.ok) {
@@ -70,31 +71,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(data.user);
             } else {
               // Invalid user data, clear localStorage
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("token");
+                localStorage.removeItem("user");
               }
               setUser(null);
             }
           } else {
             // Invalid token, clear localStorage
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("token");
+              localStorage.removeItem("user");
             }
             setUser(null);
           }
         } catch (error) {
-          console.error('Auth verification error:', error);
+          console.error("Auth verification error:", error);
           // API error, clear localStorage to be safe
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
           }
           setUser(null);
         }
       } catch (error) {
-        console.error('Auth verification error:', error);
+        console.error("Auth verification error:", error);
         setUser(null);
       } finally {
         setLoading(false);
@@ -106,10 +107,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password }),
       });
@@ -117,19 +118,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
+        throw new Error(data.message || "Login failed");
       }
 
       // Store token and user data
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
       // Update state
       setUser(data.user);
 
       return data;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error("Login error:", error);
       throw error;
     }
   };
@@ -138,14 +139,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string;
     password: string;
     name: string;
-    role: 'guide' | 'tourist';
+    role: "guide" | "tourist";
     preferredLanguage?: string;
   }) => {
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(userData),
       });
@@ -153,19 +154,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Registration failed');
+        throw new Error(data.message || "Registration failed");
       }
 
       // Store token and user data
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
       // Update state
       setUser(data.user);
-      
+
       return data;
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error("Registration error:", error);
       throw error;
     }
   };
@@ -174,26 +175,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       // Call logout endpoint to clear cookie
-      await fetch('/api/auth/logout', {
-        method: 'POST',
+      await fetch("/api/auth/logout", {
+        method: "POST",
       });
-  
+
       // Clear local storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
       // Update state
       setUser(null);
-      
+
       // Force reload to clear any cached state
-      window.location.href = '/login';
+      window.location.href = "/login";
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
       // Still clear local state even if server request fails
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
       setUser(null);
-      window.location.href = '/login';
+      window.location.href = "/login";
     } finally {
       setLoading(false);
     }

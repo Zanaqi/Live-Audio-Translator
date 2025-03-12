@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { AudioProcessor } from '@/lib/utils/audioUtils';
-import { performanceMonitor } from '@/lib/utils/performanceMonitor';
-import { Mic, MicOff, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { wsManager } from '@/lib/utils/WebSocketManager';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Mic, MicOff, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { wsManager } from "@/lib/utils/WebSocketManager";
+import { AudioProcessor } from "@/lib/utils/audioUtils";
+import { performanceMonitor } from "@/lib/utils/performanceMonitor";
 
 interface AudioTranslatorProps {
   targetLanguage: string;
@@ -11,60 +11,60 @@ interface AudioTranslatorProps {
   onTranslationChange?: (translation: string) => void;
 }
 
-export default function AudioTranslator({ 
-  targetLanguage, 
+export default function AudioTranslator({
+  targetLanguage,
   onTranscriptChange,
-  onTranslationChange 
+  onTranslationChange,
 }: AudioTranslatorProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isVoiceDetected, setIsVoiceDetected] = useState(false);
-  const [currentWord, setCurrentWord] = useState('');
+  const [currentWord, setCurrentWord] = useState("");
   const [isBrowser, setIsBrowser] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  
+  const [transcript, setTranscript] = useState("");
+
   const audioProcessorRef = useRef<AudioProcessor | null>(null);
   const recognitionRef = useRef<any>(null);
 
   // Subscribe to translation events from WebSocket
   useEffect(() => {
     const handleTranslation = (data: any) => {
-      if (data.type === 'translation' && onTranslationChange) {
+      if (data.type === "translation" && onTranslationChange) {
         onTranslationChange(data.text);
       }
     };
-    
-    wsManager.on('translation', handleTranslation);
-    
+
+    wsManager.on("translation", handleTranslation);
+
     return () => {
-      wsManager.removeListener('translation', handleTranslation);
+      wsManager.removeListener("translation", handleTranslation);
     };
   }, [onTranslationChange]);
 
   // Check if browser is supported
   useEffect(() => {
     setIsBrowser(true);
-    
+
     // Check browser compatibility
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError('Your browser does not support audio recording');
+        setError("Your browser does not support audio recording");
       }
-      if (!('webkitSpeechRecognition' in window)) {
-        setError('Your browser does not support speech recognition');
+      if (!("webkitSpeechRecognition" in window)) {
+        setError("Your browser does not support speech recognition");
       }
     }
   }, []);
 
   // Function to send transcript to WebSocket
   const sendTranscriptToWS = useCallback((text: string) => {
-    console.log('Sending transcript to WebSocket:', text);
+    console.log("Sending transcript to WebSocket:", text);
     if (wsManager.isConnected() && text.trim()) {
       wsManager.sendMessage({
-        type: 'transcript',
+        type: "transcript",
         text: text,
-        sourceLanguage: 'English' // Assuming guide speaks English
+        sourceLanguage: "English", // Assuming guide speaks English
       });
     }
   }, []);
@@ -78,7 +78,7 @@ export default function AudioTranslator({
         sampleRate: 16000,
         noiseThreshold: 0.01,
         silenceThreshold: 0.02,
-        minSpeechDuration: 300
+        minSpeechDuration: 300,
       });
 
       await audioProcessorRef.current.initialize();
@@ -90,16 +90,16 @@ export default function AudioTranslator({
         onAudioLevel: (level) => {
           setAudioLevel(level * 100);
           performanceMonitor.recordAudioQuality(level * 5); // Convert to MOS scale
-        }
+        },
       });
 
       // Initialize speech recognition
-      if ('webkitSpeechRecognition' in window) {
+      if ("webkitSpeechRecognition" in window) {
         const SpeechRecognition = window.webkitSpeechRecognition;
         recognitionRef.current = new SpeechRecognition();
         recognitionRef.current.continuous = true;
         recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = 'en-US'; // Set to English for the guide
+        recognitionRef.current.lang = "en-US"; // Set to English for the guide
 
         recognitionRef.current.onstart = () => {
           setIsRecording(true);
@@ -108,21 +108,21 @@ export default function AudioTranslator({
 
         recognitionRef.current.onresult = (event: any) => {
           const startTime = performance.now();
-          
+
           const transcript = Array.from(event.results)
             .map((result: any) => result[0].transcript)
-            .join('');
-          
+            .join("");
+
           // Update current word being spoken
           const currentResult = event.results[event.results.length - 1];
           if (!currentResult.isFinal) {
             setCurrentWord(currentResult[0].transcript);
           } else {
-            setCurrentWord('');
+            setCurrentWord("");
             // Measure latency
             const endTime = performance.now();
             performanceMonitor.recordLatency(startTime, endTime);
-            
+
             // Send final transcript to WebSocket
             sendTranscriptToWS(transcript);
           }
@@ -134,7 +134,7 @@ export default function AudioTranslator({
         };
 
         recognitionRef.current.onerror = (event: any) => {
-          console.error('Recognition error:', event.error);
+          console.error("Recognition error:", event.error);
           setError(`Speech recognition error: ${event.error}`);
           stopRecording();
         };
@@ -142,8 +142,10 @@ export default function AudioTranslator({
         recognitionRef.current.start();
       }
     } catch (error) {
-      console.error('Error starting recording:', error);
-      setError(error instanceof Error ? error.message : 'Failed to start recording');
+      console.error("Error starting recording:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to start recording"
+      );
       stopRecording();
     }
   };
@@ -162,7 +164,7 @@ export default function AudioTranslator({
     setIsRecording(false);
     setIsVoiceDetected(false);
     setAudioLevel(0);
-    setCurrentWord('');
+    setCurrentWord("");
   };
 
   // Cleanup on unmount
@@ -203,23 +205,31 @@ export default function AudioTranslator({
             onClick={isRecording ? stopRecording : startRecording}
             disabled={!!error}
             className={`p-4 rounded-full ${
-              isRecording 
-                ? 'bg-red-500 hover:bg-red-600' 
-                : 'bg-indigo-500 hover:bg-indigo-600'
+              isRecording
+                ? "bg-red-500 hover:bg-red-600"
+                : "bg-indigo-500 hover:bg-indigo-600"
             } text-white transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed`}
-            aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
+            aria-label={isRecording ? "Stop Recording" : "Start Recording"}
           >
-            {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+            {isRecording ? (
+              <MicOff className="w-6 h-6" />
+            ) : (
+              <Mic className="w-6 h-6" />
+            )}
           </button>
-          
+
           {/* Voice Activity Ring */}
           {isRecording && (
-            <div 
+            <div
               className={`absolute -inset-1 rounded-full border-2 ${
-                isVoiceDetected ? 'border-green-500 animate-pulse' : 'border-gray-300'
+                isVoiceDetected
+                  ? "border-green-500 animate-pulse"
+                  : "border-gray-300"
               } -z-10`}
               role="status"
-              aria-label={isVoiceDetected ? 'Voice detected' : 'No voice detected'}
+              aria-label={
+                isVoiceDetected ? "Voice detected" : "No voice detected"
+              }
             />
           )}
         </div>
@@ -254,9 +264,9 @@ export default function AudioTranslator({
             <span>{Math.round(audioLevel)}%</span>
           </div>
           <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div 
+            <div
               className={`h-full transition-all duration-100 ${
-                audioLevel > 50 ? 'bg-green-500' : 'bg-indigo-500'
+                audioLevel > 50 ? "bg-green-500" : "bg-indigo-500"
               }`}
               style={{ width: `${audioLevel}%` }}
               role="progressbar"

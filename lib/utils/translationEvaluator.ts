@@ -1,4 +1,4 @@
-import { computeSemanticSimilarity } from './metrics';
+import { computeSemanticSimilarity } from "./metrics";
 
 export interface TranslationEvaluation {
   semanticSimilarity: number;
@@ -11,8 +11,8 @@ export interface TranslationEvaluation {
  * Evaluates improvement between base translation and context-enhanced translation
  */
 export async function evaluateTranslationImprovement(
-  source: string, 
-  baseTranslation: string, 
+  source: string,
+  baseTranslation: string,
   contextTranslation: string
 ): Promise<TranslationEvaluation> {
   // Calculate semantic similarity between the two translations
@@ -20,31 +20,32 @@ export async function evaluateTranslationImprovement(
     baseTranslation,
     contextTranslation
   );
-  
+
   // Calculate simple lexical differences
   const baseWords = baseTranslation.split(/\s+/);
   const contextWords = contextTranslation.split(/\s+/);
-  
+
   // Count word changes
   let changedWords = 0;
   const minLength = Math.min(baseWords.length, contextWords.length);
-  
+
   for (let i = 0; i < minLength; i++) {
     if (baseWords[i] !== contextWords[i]) {
       changedWords++;
     }
   }
-  
+
   // Add difference in length
   changedWords += Math.abs(baseWords.length - contextWords.length);
-  
+
   // Calculate percentage of changes
-  const changePercentage = (changedWords / Math.max(baseWords.length, contextWords.length)) * 100;
-  
+  const changePercentage =
+    (changedWords / Math.max(baseWords.length, contextWords.length)) * 100;
+
   return {
     semanticSimilarity,
     changedWords,
     changePercentage,
-    isSubstantial: changedWords > 2 || changePercentage > 15
+    isSubstantial: changedWords > 2 || changePercentage > 15,
   };
 }
