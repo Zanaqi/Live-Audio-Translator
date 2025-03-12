@@ -23,6 +23,6 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "types/global.d.ts", "lib/utils/TranslationAdapter.js", "lib/utils/ContextManager.js"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "types/global.d.ts", "lib/utils/TranslationAdapter.js", "lib/utils/ContextManager.js", "lib/utils/translationEvaluator.ts"],
   "exclude": ["node_modules"]
 }

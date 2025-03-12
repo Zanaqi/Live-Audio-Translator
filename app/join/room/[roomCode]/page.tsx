@@ -6,6 +6,7 @@ import { Volume2, VolumeX, Languages, Users, RefreshCw, Tag, Info } from 'lucide
 import { useAuth } from '@/lib/context/AuthContext'
 import { wsManager } from '@/lib/utils/WebSocketManager'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import TranslationComparison from '@/app/components/TranslationComparison';
 
 export default function JoinRoomPage() {
   const { user, loading } = useAuth();
@@ -34,6 +35,10 @@ export default function JoinRoomPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [baseTranslation, setBaseTranslation] = useState('');
+  const [showComparison, setShowComparison] = useState(false);
+  const [translationImprovement, setTranslationImprovement] = useState<{ changePercentage: number; isSubstantial: boolean } | null>(null);
+  const [translationEvaluation, setTranslationEvaluation] = useState<any>(null);
   
   // Check authentication
   useEffect(() => {
@@ -163,6 +168,23 @@ export default function JoinRoomPage() {
           if (data.contexts) {
             setActiveContexts(data.contexts);
           }
+
+          if (data.baseTranslation) {
+            setBaseTranslation(data.baseTranslation);
+
+            // Store evaluation metrics from server
+            if (data.evaluation) {
+              setTranslationEvaluation(data.evaluation);
+            } else {
+              setTranslationEvaluation(null);
+            }
+            
+            // Calculate improvement metrics
+            if (data.baseTranslation !== data.text) {
+              const improvementScore = calculateImprovementScore(data.baseTranslation, data.text);
+              setTranslationImprovement(improvementScore);
+            }
+          }
           
           // Auto-play speech if not already playing
           if (!isPlaying && data.text) {
@@ -184,6 +206,32 @@ export default function JoinRoomPage() {
       wsManager.removeListener('message', handleMessage);
     };
   }, [isPlaying]);
+
+  const calculateImprovementScore = (base: string, contextual: string) => {
+    // Simple diff-based score - more sophisticated metrics could be used
+    let changedWords = 0;
+    const baseWords = base.split(/\s+/);
+    const contextWords = contextual.split(/\s+/);
+    
+    // Count word differences
+    const maxLength = Math.max(baseWords.length, contextWords.length);
+    const minLength = Math.min(baseWords.length, contextWords.length);
+    
+    for (let i = 0; i < minLength; i++) {
+      if (baseWords[i] !== contextWords[i]) {
+        changedWords++;
+      }
+    }
+    
+    // Add difference in length
+    changedWords += Math.abs(baseWords.length - contextWords.length);
+    
+    // Calculate percentage of changes
+    return {
+      changePercentage: Math.round((changedWords / maxLength) * 100),
+      isSubstantial: changedWords > 2 // Consider substantial if more than 2 words changed
+    };
+  };
 
   // Get context badge color based on confidence
   const getContextBadgeColor = (confidence: number) => {
@@ -278,6 +326,44 @@ export default function JoinRoomPage() {
   const leaveRoom = () => {
     wsManager.disconnect();
     router.push('/dashboard');
+  };
+
+  const highlightDifferences = (base: string, enhanced: string): React.ReactNode => {
+    const baseWords = base.split(/\s+/);
+    const enhancedWords = enhanced.split(/\s+/);
+    const result: React.ReactNode[] = [];
+    
+    const maxLength = Math.max(baseWords.length, enhancedWords.length);
+    
+    for (let i = 0; i < maxLength; i++) {
+      if (i < baseWords.length && i < enhancedWords.length) {
+        if (baseWords[i] !== enhancedWords[i]) {
+          // Highlight different words
+          result.push(
+            <span key={`diff-${i}`} className="bg-yellow-100 px-1 rounded">
+              {enhancedWords[i]}
+            </span>
+          );
+        } else {
+          // Keep same words as is
+          result.push(<span key={`same-${i}`}>{enhancedWords[i]}</span>);
+        }
+      } else if (i >= baseWords.length) {
+        // New words added in enhanced translation
+        result.push(
+          <span key={`added-${i}`} className="bg-green-100 px-1 rounded">
+            {enhancedWords[i]}
+          </span>
+        );
+      }
+      
+      // Add spaces between words
+      if (i < maxLength - 1) {
+        result.push(<span key={`space-${i}`}> </span>);
+      }
+    }
+    
+    return <>{result}</>;
   };
 
   if (loading || isLoading) {
@@ -402,6 +488,35 @@ export default function JoinRoomPage() {
                     </div>
                   )}
                 </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-medium text-gray-500">
+                Translation ({user?.preferredLanguage})
+              </h3>
+              <button
+                onClick={() => setShowComparison(!showComparison)}
+                className="flex items-center text-xs text-teal-600 hover:text-teal-800"
+              >
+                <Info className="h-3 w-3 mr-1" />
+                {showComparison ? 'Hide Comparison' : 'Show Comparison'}
+              </button>
+            </div>
+            
+            <div className="p-4 bg-teal-50 rounded-lg min-h-[100px]">
+              <p className="text-gray-700">{translation || 'Translation will appear here...'}</p>
+
+              {/* Comparison section */}
+              {baseTranslation && (
+                <TranslationComparison
+                  baseTranslation={baseTranslation}
+                  enhancedTranslation={translation}
+                  evaluation={translationEvaluation}
+                  showComparison={showComparison}
+                  toggleComparison={() => setShowComparison(!showComparison)}
+                />
               )}
             </div>
           </div>

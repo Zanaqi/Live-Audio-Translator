@@ -1,6 +1,34 @@
-// lib/server/utils/TranslationAdapter.js
+interface AdaptationResult {
+  text: string;
+  original: string;
+  confidence: number;
+  contexts: string[];
+}
 
-class TranslationAdapter {
+interface ContextState {
+  domain: {
+    value: string;
+    confidence: number;
+    lastUpdated: number;
+  };
+  topics: Map<string, {
+    value: string;
+    confidence: number;
+    lastUpdated: number;
+  }>;
+  conversationHistory: string[];
+  keyReferences: Map<string, {
+    value: string;
+    confidence: number;
+    lastUpdated: number;
+  }>;
+}
+
+export class TranslationAdapter {
+  private domainAdaptations: Map<string, Map<string, string[]>>;
+  private nameCompletions: Map<string, string>;
+  private languageAdaptations: Map<string, Map<string, Map<string, string>>>;
+
   constructor() {
     // Domain-specific term adaptations
     this.domainAdaptations = new Map([
@@ -45,14 +73,16 @@ class TranslationAdapter {
     ]);
   }
   
-  adaptTranslation(
-    baseTranslation,
-    contextState,
-    targetLanguage,
-    sourceText
-  ) {
+  public adaptTranslation(
+    baseTranslation: string,
+    contextState: ContextState,
+    targetLanguage: string,
+    sourceText: string
+  ): AdaptationResult {
+    // Store the original base translation
+    const original = baseTranslation;
     let adaptedText = baseTranslation;
-    const usedContexts = [];
+    const usedContexts: string[] = [];
     let adaptationConfidence = 0.5; // Base confidence
     
     // Apply domain-specific adaptations for target language
@@ -114,10 +144,9 @@ class TranslationAdapter {
     
     return {
       text: adaptedText,
+      original: original,
       confidence: adaptationConfidence,
       contexts: usedContexts
     };
   }
 }
-
-module.exports = { TranslationAdapter };

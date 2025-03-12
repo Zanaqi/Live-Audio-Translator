@@ -1,29 +1,57 @@
-const WebSocket = require('ws');
-const { ContextManager } = require('./utils/ContextManager');
-const { TranslationAdapter } = require('./utils/TranslationAdapter');
-const fetch = require('node-fetch');
+import WebSocket from 'ws';
+import { ContextManager } from './utils/ContextManager';
+import { TranslationAdapter } from './utils/TranslationAdapter';
+import fetch from 'node-fetch';
+import { evaluateTranslationImprovement } from '../../lib/utils/translationEvaluator';
 
-const wss = new WebSocket.Server({ port: 3002 });
+interface ParticipantInfo {
+  ws: WebSocket;
+  roomId: string;
+  role: 'guide' | 'tourist';
+  preferredLanguage?: string;
+  name: string;
+  userId?: string;
+}
+
+interface MessageData {
+  type: string;
+  roomId: string;
+  text?: string;
+  participantId?: string;
+  role?: string;
+  preferredLanguage?: string;
+  language?: string;
+  sourceLanguage?: string;
+  [key: string]: any;
+}
+
+interface TranslationResult {
+  translation: string;
+  error?: string;
+}
+
+const WS_PORT = 3002;
+const wss = new WebSocket.Server({ port: WS_PORT });
 
 // Store active rooms, context managers, and translation adapters
-const rooms = new Map();
-const roomContexts = new Map();
-const translationAdapters = new Map();
+const rooms = new Map<string, Map<string, ParticipantInfo>>();
+const roomContexts = new Map<string, ContextManager>();
+const translationAdapters = new Map<string, TranslationAdapter>();
 
 // Store participant information
-const participants = new Map();
+const participants = new Map<string, ParticipantInfo>();
 
 console.log('WebSocket server started on port 3002');
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws: WebSocket) => {
   console.log('New connection established');
-  let participantId = null;
-  let roomId = null;
+  let participantId: string | null = null;
+  let roomId: string | null = null;
 
   // Message handler
-  ws.on('message', async (message) => {
+  ws.on('message', async (message: WebSocket.Data) => {
     try {
-      const data = JSON.parse(message);
+      const data: MessageData = JSON.parse(message.toString());
       console.log('Received message:', data.type);
 
       switch (data.type) {
@@ -33,18 +61,25 @@ wss.on('connection', (ws) => {
 
         case 'join':
           handleJoin(ws, data);
-          participantId = data.participantId;
-          roomId = data.roomId;
+          participantId = data.participantId || null;
+          roomId = data.roomId || null;
           
           // Initialize context manager for the room if it doesn't exist
-          if (!roomContexts.has(roomId)) {
+          if (roomId && !roomContexts.has(roomId)) {
             roomContexts.set(roomId, new ContextManager('museum_tour')); // Default domain
             translationAdapters.set(roomId, new TranslationAdapter());
           }
           break;
 
         case 'transcript':
-          await handleTranscript(ws, data);
+          if (data.text && data.roomId) {
+            await handleTranscript(ws, data);
+          } else {
+            ws.send(JSON.stringify({ 
+              type: 'error', 
+              message: 'Missing required fields for transcript' 
+            }));
+          }
           break;
 
         case 'tourist_message':
@@ -58,7 +93,10 @@ wss.on('connection', (ws) => {
       }
     } catch (error) {
       console.error('Error processing message:', error);
-      ws.send(JSON.stringify({ type: 'error', message: 'Error processing message' }));
+      ws.send(JSON.stringify({ 
+        type: 'error', 
+        message: 'Error processing message' 
+      }));
     }
   });
 
@@ -72,25 +110,42 @@ wss.on('connection', (ws) => {
 });
 
 // Handler for join message
-function handleJoin(ws, data) {
-  const { roomId, participantId, role, preferredLanguage } = data;
+function handleJoin(ws: WebSocket, data: MessageData): void {
+  const { roomId, participantId, role, preferredLanguage, name, userId } = data;
+  
+  if (!roomId || !participantId || !role) {
+    ws.send(JSON.stringify({ 
+      type: 'error', 
+      message: 'Missing required fields for join' 
+    }));
+    return;
+  }
   
   // Store participant info
   participants.set(participantId, {
     ws,
     roomId,
-    role,
-    preferredLanguage
+    role: role as 'guide' | 'tourist',
+    preferredLanguage,
+    name: name || 'Anonymous',
+    userId
   });
   
   // Create room if not exists
   if (!rooms.has(roomId)) {
-    rooms.set(roomId, new Map());
+    rooms.set(roomId, new Map<string, ParticipantInfo>());
   }
   
   // Add participant to room
-  const room = rooms.get(roomId);
-  room.set(participantId, { ws, role, preferredLanguage });
+  const room = rooms.get(roomId)!;
+  room.set(participantId, { 
+    ws, 
+    roomId, 
+    role: role as 'guide' | 'tourist', 
+    preferredLanguage,
+    name: name || 'Anonymous',
+    userId
+  });
   
   // Notify all room participants about new join
   broadcastToRoom(roomId, {
@@ -111,12 +166,12 @@ function handleJoin(ws, data) {
 }
 
 // Handle participant leave
-function handleParticipantLeave(roomId, participantId) {
+function handleParticipantLeave(roomId: string, participantId: string): void {
   // Remove participant from tracking
   participants.delete(participantId);
   
   if (rooms.has(roomId)) {
-    const room = rooms.get(roomId);
+    const room = rooms.get(roomId)!;
     
     // Remove from room
     room.delete(participantId);
@@ -139,7 +194,7 @@ function handleParticipantLeave(roomId, participantId) {
 }
 
 // Handle transcript message (from guide)
-async function handleTranscript(ws, data) {
+async function handleTranscript(ws: WebSocket, data: MessageData): Promise<void> {
   const { roomId, text, participantId } = data;
   
   if (!roomId || !text) {
@@ -152,6 +207,9 @@ async function handleTranscript(ws, data) {
   try {
     // Update context with new transcript
     const contextManager = roomContexts.get(roomId);
+    if (!contextManager) {
+      throw new Error('Context manager not found for room');
+    }
     const updatedContext = contextManager.updateContext(text);
 
     // Broadcast original transcript to all in the room
@@ -163,7 +221,7 @@ async function handleTranscript(ws, data) {
     
     // Get all tourists in the room
     if (rooms.has(roomId)) {
-      const room = rooms.get(roomId);
+      const room = rooms.get(roomId)!;
       
       // For each tourist, translate the transcript
       for (const [touristId, tourist] of room.entries()) {
@@ -171,7 +229,6 @@ async function handleTranscript(ws, data) {
           try {
             console.log(`Translating for tourist ${touristId} to ${tourist.preferredLanguage}`);
 
-            // Base translation
             const baseTranslation = await callTranslationService(text, tourist.preferredLanguage);
             
             if (!baseTranslation) {
@@ -180,6 +237,10 @@ async function handleTranscript(ws, data) {
             
             // Apply context adaptation
             const translationAdapter = translationAdapters.get(roomId);
+            if (!translationAdapter) {
+              throw new Error('Translation adapter not found for room');
+            }
+            
             const adaptedTranslation = translationAdapter.adaptTranslation(
               baseTranslation,
               updatedContext,
@@ -187,14 +248,26 @@ async function handleTranscript(ws, data) {
               text
             );
             
+            // Evaluate the improvement (if base and adapted translations differ)
+            let evaluationResults = null;
+            if (baseTranslation !== adaptedTranslation.text) {
+              evaluationResults = await evaluateTranslationImprovement(
+                text,
+                baseTranslation,
+                adaptedTranslation.text
+              );
+            }
+            
             // Send translated text to tourist
             tourist.ws.send(JSON.stringify({
               type: 'translation',
               text: adaptedTranslation.text,
+              baseTranslation: baseTranslation,
               originalText: text,
               language: tourist.preferredLanguage,
               confidence: adaptedTranslation.confidence,
-              contexts: adaptedTranslation.contexts
+              contexts: adaptedTranslation.contexts,
+              evaluation: evaluationResults
             }));
             
             console.log(`Successfully translated for ${touristId} to ${tourist.preferredLanguage}`);
@@ -202,7 +275,7 @@ async function handleTranscript(ws, data) {
             console.error(`Translation error for ${touristId}:`, error);
             tourist.ws.send(JSON.stringify({
               type: 'error',
-              message: 'Translation failed: ' + error.message
+              message: 'Translation failed: ' + (error instanceof Error ? error.message : 'Unknown error')
             }));
           }
         }
@@ -212,13 +285,13 @@ async function handleTranscript(ws, data) {
     console.error('Error handling transcript:', error);
     ws.send(JSON.stringify({ 
       type: 'error',
-      message: 'Failed to process transcript: ' + error.message 
+      message: 'Failed to process transcript: ' + (error instanceof Error ? error.message : 'Unknown error')
     }));
   }
 }
 
 // Call existing translation service
-async function callTranslationService(text, targetLanguage) {
+async function callTranslationService(text: string, targetLanguage: string): Promise<string> {
   try {
     console.log(`Calling translation service for text: "${text}" to language: ${targetLanguage}`);
     
@@ -248,7 +321,7 @@ async function callTranslationService(text, targetLanguage) {
       throw new Error(`Translation service error: ${response.status} - ${errorText}`);
     }
     
-    const result = await response.json();
+    const result = await response.json() as TranslationResult;
     console.log('Translation service response:', result);
 
     if (result.error) {
@@ -263,7 +336,7 @@ async function callTranslationService(text, targetLanguage) {
 }
 
 // Handle tourist message
-function handleTouristMessage(ws, data) {
+function handleTouristMessage(ws: WebSocket, data: MessageData): void {
   const { roomId, text, participantId, language } = data;
   
   if (!roomId || !text) {
@@ -273,7 +346,7 @@ function handleTouristMessage(ws, data) {
   
   // Send to all guides in the room
   if (rooms.has(roomId)) {
-    const room = rooms.get(roomId);
+    const room = rooms.get(roomId)!;
     
     for (const [memberId, member] of room.entries()) {
       if (member.role === 'guide') {
@@ -289,9 +362,9 @@ function handleTouristMessage(ws, data) {
 }
 
 // Broadcast message to all participants in a room
-function broadcastToRoom(roomId, message) {
+function broadcastToRoom(roomId: string, message: any): void {
   if (rooms.has(roomId)) {
-    const room = rooms.get(roomId);
+    const room = rooms.get(roomId)!;
     
     for (const [_, participant] of room.entries()) {
       try {
@@ -303,4 +376,4 @@ function broadcastToRoom(roomId, message) {
   }
 }
 
-module.exports = wss;
+export default wss;

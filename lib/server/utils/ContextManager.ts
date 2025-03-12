@@ -1,23 +1,40 @@
-// lib/server/utils/ContextManager.js
-const { debounce } = require('lodash');
+import { debounce } from 'lodash';
 
-class ContextManager {
-  constructor(initialDomain) {
+interface ContextItem {
+  value: string;
+  confidence: number;
+  lastUpdated: number;
+}
+
+interface ContextState {
+  domain: ContextItem;
+  topics: Map<string, ContextItem>;
+  conversationHistory: string[];
+  keyReferences: Map<string, ContextItem>;
+}
+
+export class ContextManager {
+  private state: ContextState;
+  private readonly MAX_HISTORY: number = 10;
+  private readonly CONFIDENCE_DECAY: number = 0.95;
+  private readonly DECAY_INTERVAL: number = 60000;
+  private readonly MIN_CONFIDENCE: number = 0.3;
+  private readonly domainKeywords: Map<string, string[]>;
+  private readonly topicKeywords: Map<string, string[]>;
+  private readonly analyzeContext: (text: string) => void;
+  private decayInterval: NodeJS.Timeout;
+
+  constructor(initialDomain: string) {
     this.state = {
       domain: {
         value: initialDomain || 'general',
         confidence: initialDomain ? 0.8 : 0.5,
         lastUpdated: Date.now()
       },
-      topics: new Map(),
+      topics: new Map<string, ContextItem>(),
       conversationHistory: [],
-      keyReferences: new Map()
+      keyReferences: new Map<string, ContextItem>()
     };
-    
-    this.MAX_HISTORY = 10; // Keep last 10 exchanges
-    this.CONFIDENCE_DECAY = 0.95; // 5% confidence decay per minute
-    this.DECAY_INTERVAL = 60000; // 1 minute
-    this.MIN_CONFIDENCE = 0.3; // Threshold for context to be considered
     
     // Domain-specific keyword maps for context detection
     this.domainKeywords = new Map([
@@ -34,15 +51,15 @@ class ContextManager {
       ['ancient_history', ['roman', 'greek', 'egypt', 'ancient', 'archaeology']]
     ]);
     
-    // Setup decay interval
-    setInterval(() => this.applyConfidenceDecay(), this.DECAY_INTERVAL);
-    
     // Debounced context analysis to avoid processing overhead
-    this.analyzeContext = debounce(this.analyzeContext.bind(this), 500);
+    this.analyzeContext = debounce(this._analyzeContext.bind(this), 500);
+    
+    // Setup decay interval
+    this.decayInterval = setInterval(() => this.applyConfidenceDecay(), this.DECAY_INTERVAL);
   }
   
   // Update context based on new transcript
-  updateContext(transcript) {
+  public updateContext(transcript: string): ContextState {
     // Add to conversation history
     this.state.conversationHistory.push(transcript);
     
@@ -57,18 +74,25 @@ class ContextManager {
     return this.getState();
   }
   
-  // Get current context state
-  getState() {
-    return { 
-      ...this.state,
-      // Create deep copies to prevent external modification
+  // Get current context state (with deep copy to prevent external modification)
+  public getState(): ContextState {
+    return {
+      domain: { ...this.state.domain },
       topics: new Map(this.state.topics),
+      conversationHistory: [...this.state.conversationHistory],
       keyReferences: new Map(this.state.keyReferences)
     };
   }
   
+  // Cleanup on object destruction
+  public destroy(): void {
+    if (this.decayInterval) {
+      clearInterval(this.decayInterval);
+    }
+  }
+  
   // Main context analysis function
-  analyzeContext(transcript) {
+  private _analyzeContext(transcript: string): void {
     const lowercaseTranscript = transcript.toLowerCase();
     
     // Update domain confidence
@@ -82,8 +106,8 @@ class ContextManager {
   }
   
   // Update domain confidence based on detected keywords
-  updateDomainContext(text) {
-    const domainScores = new Map();
+  private updateDomainContext(text: string): void {
+    const domainScores = new Map<string, number>();
     
     // Calculate scores for each domain
     this.domainKeywords.forEach((keywords, domain) => {
@@ -128,7 +152,7 @@ class ContextManager {
   }
   
   // Update topic context based on detected keywords
-  updateTopicContext(text) {
+  private updateTopicContext(text: string): void {
     this.topicKeywords.forEach((keywords, topic) => {
       let matchCount = 0;
       
@@ -169,7 +193,7 @@ class ContextManager {
   }
   
   // Extract key reference entities
-  extractKeyReferences(text) {
+  private extractKeyReferences(text: string): void {
     // In a real implementation, this would use NER (Named Entity Recognition)
     // For this prototype, we'll use a simple keyword approach
     
@@ -201,7 +225,7 @@ class ContextManager {
   }
   
   // Apply confidence decay over time
-  applyConfidenceDecay() {
+  private applyConfidenceDecay(): void {
     const now = Date.now();
     
     // Decay domain confidence
@@ -232,7 +256,7 @@ class ContextManager {
   }
   
   // Get the most relevant topics
-  getTopTopics(limit = 3) {
+  public getTopTopics(limit = 3): Array<{topic: string, confidence: number}> {
     const topicArray = Array.from(this.state.topics.entries())
       .map(([topic, data]) => ({
         topic,
@@ -245,7 +269,7 @@ class ContextManager {
   }
   
   // Calculate overall confidence of the context
-  getOverallConfidence() {
+  public getOverallConfidence(): number {
     let contextScore = this.state.domain.confidence * 0.4; // Domain is 40% of context
     
     // Top 2 topics contribute 40%
@@ -267,5 +291,3 @@ class ContextManager {
     return contextScore;
   }
 }
-
-module.exports = { ContextManager };

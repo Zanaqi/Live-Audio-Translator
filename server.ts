@@ -1,4 +1,4 @@
-const wss = require('./lib/server/wsServer');
+import wss from './lib/server/wsServer';
 
 console.log('WebSocket server running on port 3002...');
 
