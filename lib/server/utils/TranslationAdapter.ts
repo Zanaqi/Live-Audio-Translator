@@ -60,6 +60,12 @@ export class TranslationAdapter {
       ["michelangelo", "Michelangelo Buonarroti"],
       ["raphael", "Raphael Sanzio"],
       ["monet", "Claude Monet"],
+      ["picasso", "Pablo Picasso"],
+      ["van gogh", "Vincent van Gogh"],
+      ["rembrandt", "Rembrandt van Rijn"],
+      ["caravaggio", "Michelangelo Merisi da Caravaggio"],
+      ["botticelli", "Sandro Botticelli"],
+      ["donatello", "Donatello di Niccolò di Betto Bardi"],
     ]);
 
     // Language-specific adaptations (add more languages as needed)
@@ -112,8 +118,25 @@ export class TranslationAdapter {
     const usedContexts: string[] = [];
     let adaptationConfidence = 0.5; // Base confidence
 
+    // Handle name references first (even if confidence is low)
+    // This ensures names are properly translated even at the beginning of transcripts
+    this.nameCompletions.forEach((fullName, firstName) => {
+      const firstNameLower = firstName.toLowerCase();
+      // Check in both source text and translation
+      if (
+        sourceText.toLowerCase().includes(firstNameLower) ||
+        baseTranslation.toLowerCase().includes(firstNameLower)
+      ) {
+        // Replace first name with full name
+        const regex = new RegExp(`\\b${firstName}\\b`, "gi");
+        adaptedText = adaptedText.replace(regex, fullName);
+        adaptationConfidence += 0.1;
+        usedContexts.push(`name_ref:${firstName}`);
+      }
+    });
+
     // Apply domain-specific adaptations for target language
-    if (contextState.domain.confidence > 0.6) {
+    if (contextState.domain.confidence > 0.4) {
       const domain = contextState.domain.value;
       usedContexts.push(domain);
 

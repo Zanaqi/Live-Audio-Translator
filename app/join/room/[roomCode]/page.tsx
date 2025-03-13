@@ -44,10 +44,6 @@ export default function JoinRoomPage() {
   const [reconnecting, setReconnecting] = useState(false);
   const [baseTranslation, setBaseTranslation] = useState("");
   const [showComparison, setShowComparison] = useState(false);
-  const [translationImprovement, setTranslationImprovement] = useState<{
-    changePercentage: number;
-    isSubstantial: boolean;
-  } | null>(null);
   const [translationEvaluation, setTranslationEvaluation] = useState<any>(null);
 
   // Check authentication
@@ -189,23 +185,20 @@ export default function JoinRoomPage() {
             setActiveContexts(data.contexts);
           }
 
+          // Important: Store base translation for comparison
           if (data.baseTranslation) {
+            console.log("Base translation received:", data.baseTranslation);
             setBaseTranslation(data.baseTranslation);
 
             // Store evaluation metrics from server
             if (data.evaluation) {
-              setTranslationEvaluation(data.evaluation);
-            } else {
-              setTranslationEvaluation(null);
-            }
-
-            // Calculate improvement metrics
-            if (data.baseTranslation !== data.text) {
-              const improvementScore = calculateImprovementScore(
-                data.baseTranslation,
-                data.text
-              );
-              setTranslationImprovement(improvementScore);
+              console.log("Evaluation data received:", data.evaluation);
+              setTranslationEvaluation({
+                semanticSimilarity: data.evaluation.semanticSimilarity || 0,
+                changedWords: data.evaluation.changedWords || 0,
+                changePercentage: data.evaluation.changePercentage || 0,
+                isSubstantial: data.evaluation.isSubstantial || false,
+              });
             }
           }
 
@@ -229,39 +222,6 @@ export default function JoinRoomPage() {
       wsManager.removeListener("message", handleMessage);
     };
   }, [isPlaying]);
-
-  const calculateImprovementScore = (base: string, contextual: string) => {
-    // Simple diff-based score - more sophisticated metrics could be used
-    let changedWords = 0;
-    const baseWords = base.split(/\s+/);
-    const contextWords = contextual.split(/\s+/);
-
-    // Count word differences
-    const maxLength = Math.max(baseWords.length, contextWords.length);
-    const minLength = Math.min(baseWords.length, contextWords.length);
-
-    for (let i = 0; i < minLength; i++) {
-      if (baseWords[i] !== contextWords[i]) {
-        changedWords++;
-      }
-    }
-
-    // Add difference in length
-    changedWords += Math.abs(baseWords.length - contextWords.length);
-
-    // Calculate percentage of changes
-    return {
-      changePercentage: Math.round((changedWords / maxLength) * 100),
-      isSubstantial: changedWords > 2, // Consider substantial if more than 2 words changed
-    };
-  };
-
-  // Get context badge color based on confidence
-  const getContextBadgeColor = (confidence: number) => {
-    if (confidence > 0.8) return "bg-green-100 text-green-800";
-    if (confidence > 0.6) return "bg-blue-100 text-blue-800";
-    return "bg-gray-100 text-gray-800";
-  };
 
   // Format context name for display
   const formatContextName = (context: string) => {
@@ -357,6 +317,12 @@ export default function JoinRoomPage() {
     router.push("/dashboard");
   };
 
+  // Toggle comparison visibility
+  const toggleComparisonVisibility = () => {
+    console.log("Toggling comparison visibility:", !showComparison);
+    setShowComparison(!showComparison);
+  };
+
   if (loading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -437,7 +403,7 @@ export default function JoinRoomPage() {
             </div>
           </div>
 
-          {/* Translation */}
+          {/* Translation with context info */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-medium text-gray-500">
@@ -485,9 +451,7 @@ export default function JoinRoomPage() {
                       {activeContexts.map((context, index) => (
                         <span
                           key={index}
-                          className={`px-2 py-1 rounded-full text-xs ${getContextBadgeColor(
-                            translationConfidence
-                          )}`}
+                          className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
                         >
                           <Tag className="h-3 w-3 inline mr-1" />
                           {formatContextName(context)}
@@ -499,13 +463,15 @@ export default function JoinRoomPage() {
               )}
             </div>
           </div>
+
+          {/* Translation comparison section */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-medium text-gray-500">
-                Translation ({user?.preferredLanguage})
+                Translation Comparison
               </h3>
               <button
-                onClick={() => setShowComparison(!showComparison)}
+                onClick={toggleComparisonVisibility}
                 className="flex items-center text-xs text-teal-600 hover:text-teal-800"
               >
                 <Info className="h-3 w-3 mr-1" />
@@ -513,20 +479,23 @@ export default function JoinRoomPage() {
               </button>
             </div>
 
-            <div className="p-4 bg-teal-50 rounded-lg min-h-[100px]">
-              <p className="text-gray-700">
-                {translation || "Translation will appear here..."}
-              </p>
-
-              {/* Comparison section */}
-              {baseTranslation && (
+            <div className="p-4 bg-teal-50 rounded-lg">
+              {/* Use the TranslationComparison component */}
+              {baseTranslation && translation && (
                 <TranslationComparison
                   baseTranslation={baseTranslation}
                   enhancedTranslation={translation}
                   evaluation={translationEvaluation}
                   showComparison={showComparison}
-                  toggleComparison={() => setShowComparison(!showComparison)}
+                  toggleComparison={toggleComparisonVisibility}
                 />
+              )}
+
+              {!baseTranslation && (
+                <p className="text-gray-500 text-sm italic">
+                  Comparison data will appear here after receiving a
+                  translation.
+                </p>
               )}
             </div>
           </div>
