@@ -275,6 +275,37 @@ export default function Dashboard() {
             </ul>
           )}
         </div>
+
+        {/* Evaluation Dashboard Link - Only visible to guides */}
+        {user?.role === "guide" && (
+          <div className="bg-white shadow rounded-lg p-6 mt-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Translation Analytics
+            </h3>
+            <p className="text-gray-600 mb-4">
+              View detailed statistics and feedback about your translations.
+              Analyze performance and see how the system improves over time.
+            </p>
+            <Link
+              href="/guide/evaluation"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700"
+            >
+              <span className="mr-2">View Translation Evaluation</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </Link>
+          </div>
+        )}
       </main>
     </div>
   );

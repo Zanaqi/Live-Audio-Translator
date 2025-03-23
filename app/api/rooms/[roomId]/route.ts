@@ -5,10 +5,10 @@ import { AuthService } from "@/lib/services/authService";
 // GET - Fetch a specific room by ID
 export async function GET(
   req: NextRequest,
-  { params }: { params: { roomId: string } }
+  context: { params: { roomId: string } }
 ) {
   try {
-    const roomId = params.roomId;
+    const { roomId } = context.params;
     if (!roomId) {
       return NextResponse.json(
         { error: "Room ID is required" },
@@ -69,10 +69,10 @@ export async function GET(
 // DELETE - Delete a room (guide only)
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { roomId: string } }
+  context: { params: { roomId: string } }
 ) {
   try {
-    const roomId = params.roomId;
+    const { roomId } = context.params;
     if (!roomId) {
       return NextResponse.json(
         { error: "Room ID is required" },

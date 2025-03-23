@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "target": "es2017",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "outDir": "dist",
+    "resolveJsonModule": true
+  },
+  "include": ["scripts/**/*.ts"]
+}

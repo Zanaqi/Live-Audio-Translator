@@ -14,7 +14,10 @@
     "start:translation": "python lib/translation_server.py",
     "start:next": "next start",
     "dev:next": "next dev",
-    "migrate:rooms": "ts-node --project scripts/tsconfig.json scripts/migrate-rooms.ts"
+    "migrate:rooms": "ts-node --project scripts/tsconfig.json scripts/migrate-rooms.ts",
+    "simulate:feedback": "ts-node --project tsconfig.scripts.json scripts/simulateFeedback.ts",
+    "evaluate:system": "ts-node --project tsconfig.scripts.json scripts/evaluateFeedbackSystem.ts",
+    "evaluate:all": "npm run simulate:feedback && npm run evaluate:system"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -45,7 +48,9 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
     "@types/bcryptjs": "^2.4.6",
+    "@types/dotenv": "^8.2.3",
     "@types/events": "^3.0.3",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/lodash": "^4.17.15",
@@ -55,6 +60,8 @@
     "@types/react-dom": "latest",
     "@types/ws": "^8.18.0",
     "autoprefixer": "latest",
+    "eslint": "^9.23.0",
+    "eslint-config-next": "^15.2.3",
     "postcss": "latest",
     "tailwindcss": "latest",
     "ts-node": "^10.9.2",

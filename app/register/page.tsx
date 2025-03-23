@@ -227,7 +227,7 @@ export default function Register() {
                 <div className="bg-gray-100 p-2 rounded-md border border-gray-300">
                   <p className="text-gray-700">{roomCode}</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    You'll join this tour room after registration
+                    You will join this tour room after registration
                   </p>
                 </div>
               </div>

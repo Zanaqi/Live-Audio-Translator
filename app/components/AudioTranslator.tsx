@@ -280,7 +280,7 @@ export default function AudioTranslator({
         {/* Live Word Preview */}
         {currentWord && (
           <div className="text-sm text-gray-600 italic">
-            Hearing: "{currentWord}"
+            Hearing: {currentWord}
           </div>
         )}
 

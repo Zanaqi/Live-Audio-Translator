@@ -2,7 +2,11 @@ import WebSocket from "ws";
 import fetch from "node-fetch";
 import { ContextManager } from "./utils/ContextManager";
 import { TranslationAdapter } from "./utils/TranslationAdapter";
-import { evaluateTranslationImprovement } from "../../lib/utils/translationEvaluator";
+import {
+  FeedbackTranslationImprover,
+  MongoFeedbackStore,
+} from "../utils/FeedbackTranslationImprover";
+import { evaluateTranslationImprovement } from "../utils/translationEvaluator";
 
 interface ParticipantInfo {
   ws: WebSocket;
@@ -33,10 +37,14 @@ interface TranslationResult {
 const WS_PORT = 3002;
 const wss = new WebSocket.Server({ port: WS_PORT });
 
-// Store active rooms, context managers, and translation adapters
+// Store active rooms, context managers, and translation adapters/improvers
 const rooms = new Map<string, Map<string, ParticipantInfo>>();
 const roomContexts = new Map<string, ContextManager>();
 const translationAdapters = new Map<string, TranslationAdapter>();
+
+// Create feedback-based translation improver
+const feedbackStore = new MongoFeedbackStore();
+const feedbackImprover = new FeedbackTranslationImprover(feedbackStore);
 
 // Store participant information
 const participants = new Map<string, ParticipantInfo>();
@@ -86,6 +94,10 @@ wss.on("connection", (ws: WebSocket) => {
 
         case "tourist_message":
           handleTouristMessage(ws, data);
+          break;
+
+        case "translation_feedback":
+          handleTranslationFeedback(data);
           break;
 
         default:
@@ -246,6 +258,7 @@ async function handleTranscript(
               `Translating for tourist ${touristId} to ${tourist.preferredLanguage}`
             );
 
+            // 1. Get base translation from service
             const baseTranslation = await callTranslationService(
               text,
               tourist.preferredLanguage
@@ -255,7 +268,7 @@ async function handleTranscript(
               throw new Error("Empty translation received");
             }
 
-            // Apply context adaptation
+            // 2. Apply context adaptation (keep this for hybrid approach)
             const translationAdapter = translationAdapters.get(roomId);
             if (!translationAdapter) {
               throw new Error("Translation adapter not found for room");
@@ -268,32 +281,62 @@ async function handleTranscript(
               text
             );
 
-            // Evaluate the improvement (if base and adapted translations differ)
+            // 3. NEW: Apply feedback-based improvements
+            const improvedResult = await feedbackImprover.improveTranslation(
+              baseTranslation,
+              text,
+              tourist.preferredLanguage,
+              tourist.userId
+            );
+
+            // 4. Determine final translation to use (prioritize feedback-based if confidence is high)
+            let finalTranslation = baseTranslation;
+            let improvementSource = "none";
+            let improvementConfidence = 0;
+
+            // Use adapted translation if context confidence is high
+            if (adaptedTranslation.confidence > 0.7) {
+              finalTranslation = adaptedTranslation.text;
+              improvementSource = "context";
+              improvementConfidence = adaptedTranslation.confidence;
+            }
+
+            // Override with feedback-based translation if its confidence is higher
+            if (improvedResult.confidence > adaptedTranslation.confidence) {
+              finalTranslation = improvedResult.improvedTranslation;
+              improvementSource = improvedResult.source;
+              improvementConfidence = improvedResult.confidence;
+            }
+
+            // 5. Evaluate the improvement (if base and final translations differ)
             let evaluationResults = null;
-            if (baseTranslation !== adaptedTranslation.text) {
+            if (baseTranslation !== finalTranslation) {
               evaluationResults = await evaluateTranslationImprovement(
                 text,
                 baseTranslation,
-                adaptedTranslation.text
+                finalTranslation
               );
             }
 
-            // Send translated text to tourist
+            // 6. Send translated text to tourist
             tourist.ws.send(
               JSON.stringify({
                 type: "translation",
-                text: adaptedTranslation.text,
+                text: finalTranslation,
                 baseTranslation: baseTranslation,
                 originalText: text,
                 language: tourist.preferredLanguage,
-                confidence: adaptedTranslation.confidence,
-                contexts: adaptedTranslation.contexts,
+                // Include information about which improvement was used
+                confidence: improvementConfidence,
+                improvementSource: improvementSource,
                 evaluation: evaluationResults,
+                // Include contexts from context-based approach for hybrid use
+                contexts: adaptedTranslation.contexts || [],
               })
             );
 
             console.log(
-              `Successfully translated for ${touristId} to ${tourist.preferredLanguage}`
+              `Successfully translated for ${touristId} to ${tourist.preferredLanguage} (source: ${improvementSource})`
             );
           } catch (error) {
             console.error(`Translation error for ${touristId}:`, error);
@@ -319,6 +362,23 @@ async function handleTranscript(
           (error instanceof Error ? error.message : "Unknown error"),
       })
     );
+  }
+}
+
+// Handle translation feedback
+async function handleTranslationFeedback(data: MessageData): Promise<void> {
+  try {
+    if (!data.feedbackData) {
+      console.error("Missing feedback data");
+      return;
+    }
+
+    // Store feedback for future translations
+    await feedbackImprover.storeFeedback(data.feedbackData);
+
+    console.log(`Stored feedback for "${data.feedbackData.originalText}"`);
+  } catch (error) {
+    console.error("Error handling translation feedback:", error);
   }
 }
 

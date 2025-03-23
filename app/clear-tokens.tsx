@@ -34,7 +34,7 @@ export default function ClearTokens() {
         <p className="mb-4">Removing any stored tokens and cookies...</p>
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
         <p className="mt-4 text-sm text-gray-500 text-center">
-          You'll be redirected to the homepage shortly.
+          You will be redirected to the homepage shortly.
         </p>
       </div>
     </div>

@@ -42,7 +42,4 @@ next-env.d.ts
 
 /lat-venv
 
-# scripts for the datasets
-/scripts
-
 .vscode
