@@ -2,12 +2,11 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from transformers import MarianMTModel, MarianTokenizer
 import torch
-from functools import lru_cache
 import time
-import json
 import os
 from pathlib import Path
 import traceback
+from openai import OpenAI
 
 app = Flask(__name__)
 CORS(app)
@@ -15,6 +14,10 @@ CORS(app)
 # Audio test data storage
 AUDIO_TEST_DIR = Path("audio_tests")
 AUDIO_TEST_DIR.mkdir(exist_ok=True)
+
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")  # Make sure this environment variable is set
+)
 
 def get_model_name(target_language):
     """Get the correct model name for the target language with Malay support and fallbacks"""
@@ -137,7 +140,7 @@ def translate_with_marian(text, target_language):
         if not model or not tokenizer:
             # For Malay, provide specific fallback message
             if target_language.lower() in ["malay", "bahasa", "malaysian", "bahasa_melayu"]:
-                raise ValueError(f"MarianMT models for Malay are not available. Using Google Translate only for Malay translations.")
+                raise ValueError("MarianMT models for Malay are not available. Using Google Translate only for Malay translations.")
             else:
                 raise ValueError(f"Failed to load MarianMT model for {target_language}")
         
@@ -174,71 +177,69 @@ def translate_with_google(text, target_language):
         raise
 
 def translate_with_chatgpt(text, target_language):
-    """Translate using ChatGPT/OpenAI API"""
+    """
+    Translate text using ChatGPT with the new OpenAI v1.0.0+ API
+    """
+    start_time = time.time()
+    
     try:
-        import openai
-        
-        # Check if OpenAI API key is available
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            raise ValueError("OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.")
-        
-        openai.api_key = api_key
-        
-        print(f"Translating with ChatGPT: '{text}' to {target_language}")
-        
-        # Create language mapping for ChatGPT
-        language_names = {
+        # Language mapping for better prompts
+        language_prompts = {
             'malay': 'Malay (Bahasa Melayu)',
-            'indonesian': 'Indonesian (Bahasa Indonesia)',
+            'chinese': 'Chinese (Simplified)',
+            'tamil': 'Tamil',
             'french': 'French',
             'spanish': 'Spanish',
             'german': 'German',
-            'italian': 'Italian',
             'japanese': 'Japanese',
-            'chinese': 'Chinese (Simplified)',
-            'portuguese': 'Portuguese',
-            'dutch': 'Dutch',
-            'korean': 'Korean',
-            'thai': 'Thai',
-            'vietnamese': 'Vietnamese',
+            'korean': 'Korean'
         }
         
-        target_lang_name = language_names.get(target_language.lower(), target_language)
+        target_lang_name = language_prompts.get(target_language.lower(), target_language)
         
-        # Create prompt for ChatGPT
-        prompt = f"""Translate the following English text to {target_lang_name}. 
-
-Provide only the translation without any additional explanation or commentary.
-
-Text to translate: "{text}"
-
-Translation:"""
-        
-        # Call OpenAI API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Using GPT-3.5-turbo for cost efficiency
+        # Create chat completion using new API
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # or "gpt-4" if you have access
             messages=[
-                {"role": "system", "content": "You are a professional translator. Provide accurate, natural translations without any additional commentary."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system", 
+                    "content": f"You are a professional translator. Translate the given English text to {target_lang_name}. Provide only the translation without any explanations, comments, or additional text."
+                },
+                {
+                    "role": "user", 
+                    "content": f"Translate this text to {target_lang_name}: {text}"
+                }
             ],
             max_tokens=500,
-            temperature=0.1  # Low temperature for consistent translations
+            temperature=0.1,  # Low temperature for consistent translations
+            timeout=30  # 30 second timeout
         )
         
+        end_time = time.time()
+        latency = end_time - start_time
+        
+        # Extract translation from response
         translation = response.choices[0].message.content.strip()
         
-        # Remove any quotation marks that might be added
-        if translation.startswith('"') and translation.endswith('"'):
-            translation = translation[1:-1]
+        return {
+            "translation": translation,
+            "latency": latency,
+            "model": "ChatGPT",
+            "status": "success",
+            "error": None
+        }
         
-        return translation
-        
-    except ImportError:
-        raise ValueError("OpenAI library not installed. Install with: pip install openai")
     except Exception as e:
-        print(f"ChatGPT translation error: {str(e)}")
-        raise
+        end_time = time.time()
+        latency = end_time - start_time
+        
+        return {
+            "translation": None,
+            "latency": latency,
+            "model": "ChatGPT",
+            "status": "failed",
+            "error": str(e)
+        }
 
 def apply_context_adaptation(
     text, base_translation, source_lang, target_lang, context_info
@@ -703,7 +704,7 @@ def test_audio_translation():
             try:
                 marian_translation = translate_with_marian(text, target_language)
                 marian_time = time.time() - start_time
-            except:
+            except Exception:
                 marian_translation = "Failed"
                 marian_time = 0
             
@@ -711,7 +712,7 @@ def test_audio_translation():
             try:
                 google_translation = translate_with_google(text, target_language)
                 google_time = time.time() - start_time
-            except:
+            except Exception:
                 google_translation = "Failed"
                 google_time = 0
             
