@@ -4,32 +4,46 @@ import React, { useState, useEffect, useRef } from 'react';
 import { EnhancedTranslationService } from '@/lib/services/EnhancedTranslationService';
 
 interface TestResult {
+  id: string;
+  type: 'text' | 'audio';
   text: string;
   language: string;
   marianResult: string;
   googleResult: string;
+  chatgptResult?: string;
   marianTime: number;
   googleTime: number;
+  chatgptTime?: number;
   timestamp: Date;
   accuracyMetrics?: AccuracyMetrics;
+  // Audio-specific fields
+  transcribedText?: string;
+  transcriptionAccuracy?: number;
+  audioScript?: TestScript;
+  totalLatency?: number;
+  fullComparison?: any;
 }
 
 interface AccuracyMetrics {
   bleuScore: {
     marian: number;
     google: number;
+    chatgpt?: number;
   };
   rougeScore: {
     marian: number;
     google: number;
+    chatgpt?: number;
   };
   editDistance: {
     marian: number;
     google: number;
+    chatgpt?: number;
   };
   semanticSimilarity: {
     marian: number;
     google: number;
+    chatgpt?: number;
   };
   referenceTranslation: string;
 }
@@ -45,6 +59,15 @@ interface Language {
   };
 }
 
+interface TestScript {
+  id: string;
+  text: string;
+  context: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  keywords: string[];
+  expectedChallenges: string[];
+}
+
 const TranslationTestPage: React.FC = () => {
   const [isServiceOnline, setIsServiceOnline] = useState<boolean | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
@@ -53,6 +76,37 @@ const TranslationTestPage: React.FC = () => {
   const [selectedTestSet, setSelectedTestSet] = useState<string>('museum_tour');
   const [isRunningTests, setIsRunningTests] = useState<boolean>(false);
   const [showAccuracyMetrics, setShowAccuracyMetrics] = useState<boolean>(true);
+  const [testingMode, setTestingMode] = useState<'text' | 'audio'>('text');
+  const [comparisonMode, setComparisonMode] = useState<'two' | 'three' | 'custom'>('three');
+  const [selectedModels, setSelectedModels] = useState<string[]>(['marian', 'google', 'chatgpt']);
+  const [modelSetAnalysis, setModelSetAnalysis] = useState<any>(null);
+  const [isRunningModelAnalysis, setIsRunningModelAnalysis] = useState(false);
+
+  // Audio testing state
+  const [isRecording, setIsRecording] = useState(false);
+  const [currentScript, setCurrentScript] = useState<TestScript | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
+  const [transcriptionText, setTranscriptionText] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Available models
+  const availableModels = [
+    { id: 'marian', name: 'MarianMT', color: 'blue' },
+    { id: 'google', name: 'Google Translate', color: 'green' },
+    { id: 'chatgpt', name: 'ChatGPT', color: 'purple' }
+  ];
+
+  // Predefined model sets for analysis
+  const modelSets = [
+    { name: 'Traditional Models', models: ['marian', 'google'] },
+    { name: 'AI-Enhanced', models: ['google', 'chatgpt'] },
+    { name: 'All Models', models: ['marian', 'google', 'chatgpt'] },
+    { name: 'Open Source vs AI', models: ['marian', 'chatgpt'] }
+  ];
 
   // Comprehensive language support with model availability
   const languages: Language[] = [
@@ -71,7 +125,7 @@ const TranslationTestPage: React.FC = () => {
     { code: 'vietnamese', name: 'Vietnamese', native: 'Tiếng Việt', flag: '🇻🇳', supported: { marian: true, google: true } },
   ];
 
-  // Test sets with reference translations
+  // Test sets with reference translations for text testing
   const testSets = {
     museum_tour: {
       name: "Museum Tour Context",
@@ -191,24 +245,271 @@ const TranslationTestPage: React.FC = () => {
     }
   };
 
+  // Audio test scripts organized by difficulty
+  const audioTestScripts: { [key: string]: TestScript[] } = {
+    easy: [
+      {
+        id: 'easy_welcome',
+        text: 'Welcome to the National Museum of Malaysia.',
+        context: 'Museum greeting',
+        difficulty: 'easy',
+        keywords: ['welcome', 'museum', 'Malaysia'],
+        expectedChallenges: ['Clear pronunciation', 'Simple vocabulary']
+      },
+      {
+        id: 'easy_direction',
+        text: 'Please follow me to the next room.',
+        context: 'Basic direction',
+        difficulty: 'easy',
+        keywords: ['follow', 'next', 'room'],
+        expectedChallenges: ['Common words', 'Short sentence']
+      },
+      {
+        id: 'easy_greeting',
+        text: 'Hello, how are you today?',
+        context: 'General greeting',
+        difficulty: 'easy',
+        keywords: ['hello', 'how', 'today'],
+        expectedChallenges: ['Basic conversation', 'Question format']
+      },
+      {
+        id: 'easy_thanks',
+        text: 'Thank you for visiting our museum.',
+        context: 'Polite closing',
+        difficulty: 'easy',
+        keywords: ['thank', 'visiting', 'museum'],
+        expectedChallenges: ['Gratitude expression', 'Formal tone']
+      }
+    ],
+    medium: [
+      {
+        id: 'medium_artifact',
+        text: 'This ancient artifact was discovered in the archaeological excavation of Lembah Bujang and dates back to the 5th century.',
+        context: 'Historical description',
+        difficulty: 'medium',
+        keywords: ['artifact', 'archaeological', 'excavation', 'Lembah Bujang', 'century'],
+        expectedChallenges: ['Technical terms', 'Place names', 'Historical dates']
+      },
+      {
+        id: 'medium_culture',
+        text: 'The traditional Malay architecture reflects the influence of Islamic, Chinese, and Indian cultural elements.',
+        context: 'Cultural explanation',
+        difficulty: 'medium',
+        keywords: ['traditional', 'architecture', 'Islamic', 'Chinese', 'Indian', 'cultural'],
+        expectedChallenges: ['Cultural terms', 'Multiple ethnicities', 'Architectural vocabulary']
+      },
+      {
+        id: 'medium_ceremony',
+        text: 'The royal coronation ceremony incorporates ancient rituals that have been preserved for over six hundred years.',
+        context: 'Ceremonial description',
+        difficulty: 'medium',
+        keywords: ['coronation', 'ceremony', 'rituals', 'preserved', 'hundred'],
+        expectedChallenges: ['Formal language', 'Historical context', 'Time expressions']
+      },
+      {
+        id: 'medium_textile',
+        text: 'The intricate batik patterns represent symbolic meanings deeply rooted in Malaysian folklore and spiritual beliefs.',
+        context: 'Art description',
+        difficulty: 'medium',
+        keywords: ['intricate', 'batik', 'symbolic', 'folklore', 'spiritual'],
+        expectedChallenges: ['Art terminology', 'Cultural symbolism', 'Abstract concepts']
+      }
+    ],
+    hard: [
+      {
+        id: 'hard_archaeological',
+        text: 'The stratigraphic analysis reveals that this particular stratum contains ceramic fragments characteristic of the transitional period between the Hindu-Buddhist and Islamic epochs in Southeast Asian civilization.',
+        context: 'Academic archaeological description',
+        difficulty: 'hard',
+        keywords: ['stratigraphic', 'stratum', 'ceramic', 'transitional', 'Hindu-Buddhist', 'Islamic', 'epochs', 'civilization'],
+        expectedChallenges: ['Academic vocabulary', 'Technical terminology', 'Complex sentence structure', 'Historical periods']
+      },
+      {
+        id: 'hard_metallurgy',
+        text: 'The sophisticated metallurgical techniques employed in crafting this bronze ceremonial vessel demonstrate the advanced technological capabilities of the Srivijaya maritime empire.',
+        context: 'Technical historical analysis',
+        difficulty: 'hard',
+        keywords: ['metallurgical', 'bronze', 'ceremonial', 'vessel', 'technological', 'Srivijaya', 'maritime', 'empire'],
+        expectedChallenges: ['Scientific terminology', 'Historical empire names', 'Technical processes']
+      },
+      {
+        id: 'hard_ethnographic',
+        text: 'The ethnographic documentation indicates that these ritualistic implements were integral to the shamanic practices of the indigenous Orang Asli communities throughout the pre-colonial peninsula.',
+        context: 'Anthropological description',
+        difficulty: 'hard',
+        keywords: ['ethnographic', 'ritualistic', 'implements', 'shamanic', 'indigenous', 'Orang Asli', 'pre-colonial', 'peninsula'],
+        expectedChallenges: ['Anthropological terms', 'Indigenous group names', 'Academic language', 'Historical periods']
+      },
+      {
+        id: 'hard_conservation',
+        text: 'The conservation methodology employs non-invasive spectroscopic analysis and controlled atmospheric stabilization to mitigate deterioration of the organic materials.',
+        context: 'Museum conservation science',
+        difficulty: 'hard',
+        keywords: ['conservation', 'methodology', 'non-invasive', 'spectroscopic', 'atmospheric', 'stabilization', 'deterioration', 'organic'],
+        expectedChallenges: ['Scientific methodology', 'Technical procedures', 'Conservation terminology']
+      }
+    ]
+  };
+
   const currentLanguage = languages.find(lang => lang.code === selectedLanguage) || languages[0];
   const currentTestSet = testSets[selectedTestSet as keyof typeof testSets];
 
+  // Audio testing functions
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+      const recognitionInstance = new SpeechRecognition();
+      
+      recognitionInstance.continuous = true;
+      recognitionInstance.interimResults = true;
+      recognitionInstance.lang = 'en-US';
+
+      recognitionInstance.onresult = (event) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript) {
+          setTranscriptionText(finalTranscript);
+        }
+      };
+
+      recognitionInstance.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+      };
+
+      recognitionInstance.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognitionInstance;
+    }
+  }, []);
+
+  const selectRandomScript = (difficulty: 'easy' | 'medium' | 'hard') => {
+    const scripts = audioTestScripts[difficulty];
+    const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
+    setCurrentScript(randomScript);
+    setTranscriptionText('');
+  };
+
+  const startRecording = async () => {
+    if (!recognitionRef.current) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.start();
+      recognitionRef.current.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    setIsRecording(false);
+  };
+
+  const processAudioTest = async () => {
+    if (!currentScript || !transcriptionText) return;
+
+    setIsProcessing(true);
+    const startTime = Date.now();
+
+    try {
+      const transcriptionTime = 0.5;
+      
+      let comparison;
+      if (comparisonMode === 'three') {
+        comparison = await EnhancedTranslationService.compareThreeModels(transcriptionText, selectedLanguage);
+      } else if (comparisonMode === 'custom') {
+        comparison = await EnhancedTranslationService.compareCustomModels(transcriptionText, selectedLanguage, selectedModels as any);
+      } else {
+        comparison = await EnhancedTranslationService.compareTranslations(transcriptionText, selectedLanguage);
+      }
+
+      const transcriptionAccuracy = calculateTranscriptionAccuracy(
+        currentScript.text, 
+        transcriptionText
+      );
+
+      const result: TestResult = {
+        id: `audio_${Date.now()}`,
+        type: 'audio',
+        text: transcriptionText,
+        language: selectedLanguage,
+        marianResult: comparison.results?.marian?.translation || comparison.marian?.translation || 'Failed',
+        googleResult: comparison.results?.google?.translation || comparison.google?.translation || 'Failed',
+        chatgptResult: comparison.results?.chatgpt?.translation || 'N/A',
+        marianTime: comparison.results?.marian?.latency || comparison.marian?.latency || 0,
+        googleTime: comparison.results?.google?.latency || comparison.google?.latency || 0,
+        chatgptTime: comparison.results?.chatgpt?.latency || 0,
+        timestamp: new Date(),
+        transcribedText: transcriptionText,
+        transcriptionAccuracy,
+        audioScript: currentScript,
+        totalLatency: (Date.now() - startTime) / 1000,
+        fullComparison: comparison
+      };
+
+      setTestResults(prev => [result, ...prev]);
+      setCurrentScript(null);
+      setTranscriptionText('');
+      
+    } catch (error) {
+      console.error('Error processing audio test:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Accuracy calculation functions
+  const calculateTranscriptionAccuracy = (original: string, transcribed: string): number => {
+    const originalWords = original.toLowerCase().split(/\s+/);
+    const transcribedWords = transcribed.toLowerCase().split(/\s+/);
+    
+    let matches = 0;
+    const maxLength = Math.max(originalWords.length, transcribedWords.length);
+    
+    for (let i = 0; i < Math.min(originalWords.length, transcribedWords.length); i++) {
+      if (originalWords[i] === transcribedWords[i]) {
+        matches++;
+      }
+    }
+    
+    return maxLength > 0 ? Math.round((matches / maxLength) * 100) : 0;
+  };
+
   const calculateBLEUScore = (candidate: string, reference: string): number => {
-    // Simplified BLEU score calculation (1-gram precision)
     const candidateWords = candidate.toLowerCase().split(/\s+/);
     const referenceWords = reference.toLowerCase().split(/\s+/);
     
     let matches = 0;
     const refWordCount: { [key: string]: number } = {};
     
-    // Count reference words
     referenceWords.forEach(word => {
       refWordCount[word] = (refWordCount[word] || 0) + 1;
     });
     
-    // Count matches
     candidateWords.forEach(word => {
       if (refWordCount[word] && refWordCount[word] > 0) {
         matches++;
@@ -216,10 +517,7 @@ const TranslationTestPage: React.FC = () => {
       }
     });
     
-    // Precision score
     const precision = candidateWords.length > 0 ? matches / candidateWords.length : 0;
-    
-    // Brevity penalty (simplified)
     const bp = candidateWords.length >= referenceWords.length ? 1 : 
                 Math.exp(1 - referenceWords.length / candidateWords.length);
     
@@ -227,11 +525,10 @@ const TranslationTestPage: React.FC = () => {
   };
 
   const calculateROUGEScore = (candidate: string, reference: string): number => {
-    // ROUGE-1 F1 score (simplified)
     const candidateWords = new Set(candidate.toLowerCase().split(/\s+/));
     const referenceWords = new Set(reference.toLowerCase().split(/\s+/));
     
-    const intersection = new Set(Array.from(candidateWords).filter(x => referenceWords.has(x)));
+    const intersection = new Set([...candidateWords].filter(x => referenceWords.has(x)));
     
     const precision = candidateWords.size > 0 ? intersection.size / candidateWords.size : 0;
     const recall = referenceWords.size > 0 ? intersection.size / referenceWords.size : 0;
@@ -242,7 +539,6 @@ const TranslationTestPage: React.FC = () => {
   };
 
   const calculateEditDistance = (str1: string, str2: string): number => {
-    // Levenshtein distance
     const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
     
     for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
@@ -263,11 +559,10 @@ const TranslationTestPage: React.FC = () => {
   };
 
   const calculateSemanticSimilarity = (candidate: string, reference: string): number => {
-    // Simple cosine similarity based on word overlap
     const candidateWords = candidate.toLowerCase().split(/\s+/);
     const referenceWords = reference.toLowerCase().split(/\s+/);
     
-    const allWords = Array.from(new Set([...candidateWords, ...referenceWords]));
+    const allWords = [...new Set([...candidateWords, ...referenceWords])];
     
     const candidateVector = allWords.map(word => candidateWords.filter(w => w === word).length);
     const referenceVector = allWords.map(word => referenceWords.filter(w => w === word).length);
@@ -282,8 +577,8 @@ const TranslationTestPage: React.FC = () => {
     return Math.round(similarity * 100);
   };
 
-  const calculateAccuracyMetrics = (marianResult: string, googleResult: string, reference: string): AccuracyMetrics => {
-    return {
+  const calculateAccuracyMetrics = (marianResult: string, googleResult: string, reference: string, chatgptResult?: string): AccuracyMetrics => {
+    const metrics: AccuracyMetrics = {
       bleuScore: {
         marian: calculateBLEUScore(marianResult, reference),
         google: calculateBLEUScore(googleResult, reference)
@@ -302,6 +597,15 @@ const TranslationTestPage: React.FC = () => {
       },
       referenceTranslation: reference
     };
+
+    if (chatgptResult && chatgptResult !== 'N/A' && chatgptResult !== 'Failed') {
+      metrics.bleuScore.chatgpt = calculateBLEUScore(chatgptResult, reference);
+      metrics.rougeScore.chatgpt = calculateROUGEScore(chatgptResult, reference);
+      metrics.editDistance.chatgpt = calculateEditDistance(chatgptResult, reference);
+      metrics.semanticSimilarity.chatgpt = calculateSemanticSimilarity(chatgptResult, reference);
+    }
+
+    return metrics;
   };
 
   // Check if translation service is online
@@ -321,24 +625,38 @@ const TranslationTestPage: React.FC = () => {
 
   const runSingleTest = async (text: string, language: string, reference?: string): Promise<TestResult | null> => {
     try {
-      const comparison = await EnhancedTranslationService.compareTranslations(text, language);
+      let comparison;
+      
+      if (comparisonMode === 'three') {
+        comparison = await EnhancedTranslationService.compareThreeModels(text, language);
+      } else if (comparisonMode === 'custom') {
+        comparison = await EnhancedTranslationService.compareCustomModels(text, language, selectedModels as any);
+      } else {
+        comparison = await EnhancedTranslationService.compareTranslations(text, language);
+      }
       
       const result: TestResult = {
+        id: `text_${Date.now()}_${Math.random()}`,
+        type: 'text',
         text,
         language,
-        marianResult: comparison.marian?.translation || 'Failed',
-        googleResult: comparison.google?.translation || 'Failed',
-        marianTime: comparison.marian?.latency || 0,
-        googleTime: comparison.google?.latency || 0,
-        timestamp: new Date()
+        marianResult: comparison.results?.marian?.translation || comparison.marian?.translation || 'Failed',
+        googleResult: comparison.results?.google?.translation || comparison.google?.translation || 'Failed',
+        chatgptResult: comparison.results?.chatgpt?.translation || 'N/A',
+        marianTime: comparison.results?.marian?.latency || comparison.marian?.latency || 0,
+        googleTime: comparison.results?.google?.latency || comparison.google?.latency || 0,
+        chatgptTime: comparison.results?.chatgpt?.latency || 0,
+        timestamp: new Date(),
+        fullComparison: comparison
       };
 
       // Calculate accuracy metrics if reference translation is available
-      if (reference && comparison.marian?.translation && comparison.google?.translation) {
+      if (reference && result.marianResult !== 'Failed' && result.googleResult !== 'Failed') {
         result.accuracyMetrics = calculateAccuracyMetrics(
-          comparison.marian.translation,
-          comparison.google.translation,
-          reference
+          result.marianResult,
+          result.googleResult,
+          reference,
+          result.chatgptResult
         );
       }
 
@@ -359,7 +677,6 @@ const TranslationTestPage: React.FC = () => {
       if (result) {
         setTestResults(prev => [...prev, result]);
       }
-      // Small delay between tests
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
@@ -375,31 +692,98 @@ const TranslationTestPage: React.FC = () => {
     }
   };
 
+  const runModelSetAnalysis = async () => {
+    setIsRunningModelAnalysis(true);
+    setModelSetAnalysis(null);
+
+    try {
+      const testTexts = currentTestSet.tests.map(t => t.text);
+      
+      const analysis = await EnhancedTranslationService.analyzeModelSetPerformance(
+        testTexts,
+        selectedLanguage,
+        modelSets
+      );
+
+      setModelSetAnalysis(analysis);
+    } catch (error) {
+      console.error('Model set analysis failed:', error);
+    } finally {
+      setIsRunningModelAnalysis(false);
+    }
+  };
+
   const calculateOverallStats = () => {
     if (testResults.length === 0) return null;
-    
+
+    const textResults = testResults.filter(r => r.type === 'text');
+    const audioResults = testResults.filter(r => r.type === 'audio');
+
     const avgMarianTime = testResults.reduce((sum, r) => sum + r.marianTime, 0) / testResults.length;
     const avgGoogleTime = testResults.reduce((sum, r) => sum + r.googleTime, 0) / testResults.length;
-    const marianWins = testResults.filter(r => r.marianTime < r.googleTime && r.marianTime > 0).length;
-    const googleWins = testResults.filter(r => r.googleTime < r.marianTime && r.googleTime > 0).length;
+    const avgChatGPTTime = testResults.reduce((sum, r) => sum + (r.chatgptTime || 0), 0) / testResults.filter(r => r.chatgptTime).length;
     
+    const marianWins = testResults.filter(r => r.marianTime < r.googleTime && r.marianTime > 0 && r.marianTime < (r.chatgptTime || Infinity)).length;
+    const googleWins = testResults.filter(r => r.googleTime < r.marianTime && r.googleTime > 0 && r.googleTime < (r.chatgptTime || Infinity)).length;
+    const chatgptWins = testResults.filter(r => r.chatgptTime && r.chatgptTime < r.marianTime && r.chatgptTime < r.googleTime).length;
+    
+    // Audio-specific stats
+    const avgTranscriptionAccuracy = audioResults.length > 0 
+      ? audioResults.reduce((sum, r) => sum + (r.transcriptionAccuracy || 0), 0) / audioResults.length 
+      : 0;
+    
+    const avgTotalLatency = audioResults.length > 0
+      ? audioResults.reduce((sum, r) => sum + (r.totalLatency || 0), 0) / audioResults.length
+      : 0;
+
     // Accuracy averages (only for tests with metrics)
     const testsWithMetrics = testResults.filter(r => r.accuracyMetrics);
     const avgAccuracy = testsWithMetrics.length > 0 ? {
       marianBleu: testsWithMetrics.reduce((sum, r) => sum + (r.accuracyMetrics?.bleuScore.marian || 0), 0) / testsWithMetrics.length,
       googleBleu: testsWithMetrics.reduce((sum, r) => sum + (r.accuracyMetrics?.bleuScore.google || 0), 0) / testsWithMetrics.length,
+      chatgptBleu: testsWithMetrics.reduce((sum, r) => sum + (r.accuracyMetrics?.bleuScore.chatgpt || 0), 0) / testsWithMetrics.filter(r => r.accuracyMetrics?.bleuScore.chatgpt).length,
       marianRouge: testsWithMetrics.reduce((sum, r) => sum + (r.accuracyMetrics?.rougeScore.marian || 0), 0) / testsWithMetrics.length,
       googleRouge: testsWithMetrics.reduce((sum, r) => sum + (r.accuracyMetrics?.rougeScore.google || 0), 0) / testsWithMetrics.length,
+      chatgptRouge: testsWithMetrics.reduce((sum, r) => sum + (r.accuracyMetrics?.rougeScore.chatgpt || 0), 0) / testsWithMetrics.filter(r => r.accuracyMetrics?.rougeScore.chatgpt).length,
     } : null;
     
     return {
+      total: testResults.length,
+      textTests: textResults.length,
+      audioTests: audioResults.length,
       avgMarianTime: avgMarianTime.toFixed(3),
       avgGoogleTime: avgGoogleTime.toFixed(3),
+      avgChatGPTTime: avgChatGPTTime ? avgChatGPTTime.toFixed(3) : 'N/A',
       marianWins,
       googleWins,
-      fasterModel: avgMarianTime < avgGoogleTime ? 'MarianMT' : 'Google Translate',
+      chatgptWins,
+      fasterModel: avgMarianTime < avgGoogleTime && avgMarianTime < avgChatGPTTime ? 'MarianMT' : 
+                   avgGoogleTime < avgChatGPTTime ? 'Google Translate' : 'ChatGPT',
+      avgTranscriptionAccuracy: avgTranscriptionAccuracy.toFixed(1),
+      avgTotalLatency: avgTotalLatency.toFixed(2),
       avgAccuracy
     };
+  };
+
+  const downloadTestScripts = () => {
+    const allScripts = Object.values(audioTestScripts).flat();
+    const scriptsText = allScripts.map(script => 
+      `=== ${script.id.toUpperCase()} (${script.difficulty.toUpperCase()}) ===\n` +
+      `Context: ${script.context}\n` +
+      `Text: "${script.text}"\n` +
+      `Keywords: ${script.keywords.join(', ')}\n` +
+      `Expected Challenges: ${script.expectedChallenges.join(', ')}\n\n`
+    ).join('');
+    
+    const blob = new Blob([scriptsText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'audio_test_scripts.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const stats = calculateOverallStats();
@@ -441,10 +825,10 @@ const TranslationTestPage: React.FC = () => {
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Translation Model Testing & Accuracy Comparison
+          🔬 Comprehensive Translation Testing Platform
         </h1>
         <p className="text-gray-600">
-          Compare MarianMT vs Google Translate with BLEU, ROUGE, and other accuracy metrics
+          Test both text and audio translation pipelines with accuracy metrics and performance analysis
         </p>
         <div className="mt-2 inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full">
           <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
@@ -452,105 +836,335 @@ const TranslationTestPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Controls */}
+      {/* Testing Mode Selector */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Target Language
-            </label>
-            <select
-              value={selectedLanguage}
-              onChange={(e) => setSelectedLanguage(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-            >
-              {languages.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.flag} {lang.name} ({lang.native})
-                  {!lang.supported.marian && " - Google Only"}
-                </option>
-              ))}
-            </select>
-            <div className="mt-1 text-xs text-gray-500">
-              MarianMT: {currentLanguage.supported.marian ? '✅' : '❌'} | 
-              Google: {currentLanguage.supported.google ? '✅' : '❌'}
+        <div className="flex items-center justify-center space-x-4 mb-6">
+          <button
+            onClick={() => setTestingMode('text')}
+            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+              testingMode === 'text'
+                ? 'bg-blue-500 text-white shadow-lg'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            📝 Text Translation Testing
+          </button>
+          <button
+            onClick={() => setTestingMode('audio')}
+            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+              testingMode === 'audio'
+                ? 'bg-purple-500 text-white shadow-lg'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            🎙️ Audio Translation Testing
+          </button>
+        </div>
+
+        {/* Text Testing Interface */}
+        {testingMode === 'text' && (
+          <div className="space-y-4">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Text Translation Testing</h2>
+              <p className="text-gray-600">Test translation models with predefined text sets and custom inputs</p>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Test Set
-            </label>
-            <select
-              value={selectedTestSet}
-              onChange={(e) => setSelectedTestSet(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-            >
-              {Object.entries(testSets).map(([key, testSet]) => (
-                <option key={key} value={key}>
-                  {testSet.name} ({testSet.tests.length} tests)
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* Comparison Mode Selector */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h3 className="font-semibold text-gray-800 mb-3">Model Comparison Configuration</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Comparison Mode
+                  </label>
+                  <select
+                    value={comparisonMode}
+                    onChange={(e) => setComparisonMode(e.target.value as any)}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="three">All Three Models</option>
+                    <option value="custom">Custom Selection</option>
+                    <option value="two">Legacy (MarianMT vs Google)</option>
+                  </select>
+                </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Options
-            </label>
-            <div className="space-y-2">
-              <label className="flex items-center">
+                {comparisonMode === 'custom' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Models to Compare
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {availableModels.map((model) => (
+                        <label key={model.id} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedModels.includes(model.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedModels([...selectedModels, model.id]);
+                              } else {
+                                setSelectedModels(selectedModels.filter(m => m !== model.id));
+                              }
+                            }}
+                            className="mr-2"
+                          />
+                          <span className={`text-sm px-2 py-1 rounded bg-${model.color}-100 text-${model.color}-800`}>
+                            {model.name}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Model Set Analysis */}
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-medium text-gray-700">Model Set Performance Analysis</h4>
+                  <button
+                    onClick={runModelSetAnalysis}
+                    disabled={isRunningModelAnalysis}
+                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md disabled:bg-gray-300"
+                  >
+                    {isRunningModelAnalysis ? 'Analyzing...' : 'Analyze Model Sets'}
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Compare different combinations of models to identify the best performing set
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Language
+                </label>
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.name} ({lang.native})
+                      {!lang.supported.marian && " - Limited MarianMT"}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-1 text-xs text-gray-500">
+                  MarianMT: {currentLanguage.supported.marian ? '✅' : '❌'} | 
+                  Google: {currentLanguage.supported.google ? '✅' : '❌'} |
+                  ChatGPT: ✅
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Test Set
+                </label>
+                <select
+                  value={selectedTestSet}
+                  onChange={(e) => setSelectedTestSet(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                >
+                  {Object.entries(testSets).map(([key, testSet]) => (
+                    <option key={key} value={key}>
+                      {testSet.name} ({testSet.tests.length} tests)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Options
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={showAccuracyMetrics}
+                      onChange={(e) => setShowAccuracyMetrics(e.target.checked)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">Show Accuracy Metrics</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom Test Text
+                </label>
                 <input
-                  type="checkbox"
-                  checked={showAccuracyMetrics}
-                  onChange={(e) => setShowAccuracyMetrics(e.target.checked)}
-                  className="mr-2"
+                  type="text"
+                  value={currentTest}
+                  onChange={(e) => setCurrentTest(e.target.value)}
+                  placeholder="Enter text to translate and test..."
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
                 />
-                <span className="text-sm">Show Accuracy Metrics</span>
-              </label>
+              </div>
+              
+              <div className="flex flex-col justify-end space-y-2">
+                <button
+                  onClick={runCustomTest}
+                  disabled={!currentTest.trim()}
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Test Custom Text
+                </button>
+                <button
+                  onClick={runAllTests}
+                  disabled={isRunningTests}
+                  className="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {isRunningTests ? 'Running Tests...' : `Run ${currentTestSet.name}`}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Custom Test Text
-            </label>
-            <input
-              type="text"
-              value={currentTest}
-              onChange={(e) => setCurrentTest(e.target.value)}
-              placeholder="Enter text to translate and test..."
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-            />
+            {isRunningTests && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                  <span className="text-blue-700">
+                    Running text translation tests using {comparisonMode} mode... ({testResults.filter(r => r.type === 'text').length}/{currentTestSet.tests.length} completed)
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
-          
-          <div className="flex flex-col justify-end space-y-2">
-            <button
-              onClick={runCustomTest}
-              disabled={!currentTest.trim()}
-              className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              Test Custom Text
-            </button>
-            <button
-              onClick={runAllTests}
-              disabled={isRunningTests}
-              className="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              {isRunningTests ? 'Running Tests...' : `Run ${currentTestSet.name}`}
-            </button>
-          </div>
-        </div>
+        )}
 
-        {isRunningTests && (
-          <div className="mt-4 p-3 bg-blue-50 rounded-md">
-            <div className="flex items-center">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
-              <span className="text-blue-700">
-                Running translation tests... ({testResults.length}/{currentTestSet.tests.length} completed)
-              </span>
+        {/* Audio Testing Interface */}
+        {testingMode === 'audio' && (
+          <div className="space-y-4">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Audio Translation Testing</h2>
+              <p className="text-gray-600">Complete pipeline testing: Audio capture → Transcription → Translation</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Language
+                </label>
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Test Difficulty
+                </label>
+                <select
+                  value={selectedDifficulty}
+                  onChange={(e) => setSelectedDifficulty(e.target.value as any)}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="easy">Easy (4 scripts)</option>
+                  <option value="medium">Medium (4 scripts)</option>
+                  <option value="hard">Hard (4 scripts)</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col justify-end">
+                <button
+                  onClick={() => selectRandomScript(selectedDifficulty)}
+                  className="w-full px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
+                >
+                  📋 Get Random Script
+                </button>
+              </div>
+            </div>
+
+            {/* Script Display */}
+            {currentScript && (
+              <div className="border-2 border-purple-200 rounded-lg p-4 bg-purple-50">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-semibold text-purple-900">
+                      {currentScript.difficulty.toUpperCase()} - {currentScript.context}
+                    </h3>
+                    <div className="text-sm text-purple-700 mt-1">
+                      Keywords: {currentScript.keywords.join(', ')}
+                    </div>
+                  </div>
+                  <div className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                    ID: {currentScript.id}
+                  </div>
+                </div>
+                
+                <div className="bg-white p-4 rounded border-2 border-dashed border-purple-300 mb-3">
+                  <div className="text-lg font-medium text-gray-900">
+                    📢 READ THIS ALOUD:
+                  </div>
+                  <div className="text-xl text-gray-800 mt-2 leading-relaxed">
+                    "{currentScript.text}"
+                  </div>
+                </div>
+
+                <div className="text-sm text-purple-700">
+                  <strong>Expected Challenges:</strong> {currentScript.expectedChallenges.join(', ')}
+                </div>
+              </div>
+            )}
+
+            {/* Recording Controls */}
+            <div className="flex items-center justify-center space-x-4">
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={!currentScript || isProcessing}
+                className={`px-6 py-3 rounded-full font-semibold ${
+                  isRecording
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                } disabled:bg-gray-300 disabled:cursor-not-allowed`}
+              >
+                {isRecording ? '🛑 Stop Recording' : '🎙️ Start Recording'}
+              </button>
+
+              {transcriptionText && (
+                <button
+                  onClick={processAudioTest}
+                  disabled={isProcessing}
+                  className="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-full font-semibold disabled:bg-gray-300"
+                >
+                  {isProcessing ? '⏳ Processing...' : '🔄 Process & Translate'}
+                </button>
+              )}
+            </div>
+
+            {/* Transcription Display */}
+            {transcriptionText && (
+              <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                <h4 className="font-semibold text-gray-700 mb-2">Live Transcription:</h4>
+                <div className="text-gray-900 italic">"{transcriptionText}"</div>
+              </div>
+            )}
+
+            {/* Utility Buttons */}
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={downloadTestScripts}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md"
+              >
+                📥 Download All Scripts
+              </button>
             </div>
           </div>
         )}
@@ -559,12 +1173,35 @@ const TranslationTestPage: React.FC = () => {
       {/* Performance Statistics */}
       {stats && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Performance & Accuracy Statistics</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Comprehensive Testing Statistics</h2>
           
-          {/* Speed Performance */}
+          {/* Overall Statistics */}
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Speed Performance</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">Overall Performance</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-indigo-50 rounded-lg">
+                <div className="text-2xl font-bold text-indigo-600">{stats.total}</div>
+                <div className="text-sm text-gray-600">Total Tests</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">{stats.textTests}</div>
+                <div className="text-sm text-gray-600">Text Tests</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600">{stats.audioTests}</div>
+                <div className="text-sm text-gray-600">Audio Tests</div>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-lg font-bold text-gray-600">{stats.fasterModel}</div>
+                <div className="text-sm text-gray-600">Overall Faster</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Translation Speed Performance */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">Translation Speed Performance</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="text-center p-3 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">{stats.avgMarianTime}s</div>
                 <div className="text-sm text-gray-600">Avg MarianMT Time</div>
@@ -574,21 +1211,44 @@ const TranslationTestPage: React.FC = () => {
                 <div className="text-sm text-gray-600">Avg Google Time</div>
               </div>
               <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">{stats.marianWins}</div>
-                <div className="text-sm text-gray-600">MarianMT Wins</div>
+                <div className="text-2xl font-bold text-purple-600">{stats.avgChatGPTTime}</div>
+                <div className="text-sm text-gray-600">Avg ChatGPT Time</div>
               </div>
               <div className="text-center p-3 bg-orange-50 rounded-lg">
-                <div className="text-2xl font-bold text-orange-600">{stats.googleWins}</div>
-                <div className="text-sm text-gray-600">Google Wins</div>
+                <div className="text-sm text-gray-600">
+                  M: {stats.marianWins} | G: {stats.googleWins} | C: {stats.chatgptWins}
+                </div>
+                <div className="text-sm text-gray-600">Speed Wins</div>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-lg font-bold text-gray-600">{stats.fasterModel}</div>
+                <div className="text-sm text-gray-600">Fastest Model</div>
               </div>
             </div>
           </div>
+
+          {/* Audio-Specific Performance */}
+          {stats.audioTests > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Audio Pipeline Performance</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                  <div className="text-2xl font-bold text-yellow-600">{stats.avgTranscriptionAccuracy}%</div>
+                  <div className="text-sm text-gray-600">Avg Transcription Accuracy</div>
+                </div>
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{stats.avgTotalLatency}s</div>
+                  <div className="text-sm text-gray-600">Avg Total Pipeline Time</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Accuracy Performance */}
           {stats.avgAccuracy && showAccuracyMetrics && (
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Translation Accuracy</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div className="text-center p-3 bg-indigo-50 rounded-lg">
                   <div className="text-xl font-bold text-indigo-600">
                     {stats.avgAccuracy.marianBleu.toFixed(1)}%
@@ -600,6 +1260,12 @@ const TranslationTestPage: React.FC = () => {
                     {stats.avgAccuracy.googleBleu.toFixed(1)}%
                   </div>
                   <div className="text-sm text-gray-600">Google BLEU</div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg">
+                  <div className="text-xl font-bold text-purple-600">
+                    {stats.avgAccuracy.chatgptBleu ? stats.avgAccuracy.chatgptBleu.toFixed(1) : 'N/A'}%
+                  </div>
+                  <div className="text-sm text-gray-600">ChatGPT BLEU</div>
                 </div>
                 <div className="text-center p-3 bg-pink-50 rounded-lg">
                   <div className="text-xl font-bold text-pink-600">
@@ -613,170 +1279,337 @@ const TranslationTestPage: React.FC = () => {
                   </div>
                   <div className="text-sm text-gray-600">Google ROUGE</div>
                 </div>
+                <div className="text-center p-3 bg-violet-50 rounded-lg">
+                  <div className="text-xl font-bold text-violet-600">
+                    {stats.avgAccuracy.chatgptRouge ? stats.avgAccuracy.chatgptRouge.toFixed(1) : 'N/A'}%
+                  </div>
+                  <div className="text-sm text-gray-600">ChatGPT ROUGE</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Model Set Analysis Results */}
+          {modelSetAnalysis && (
+            <div className="mt-6 border-t pt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Model Set Analysis Results</h3>
+              <div className="bg-yellow-50 p-4 rounded-lg mb-4">
+                <div className="text-center">
+                  <div className="text-lg font-bold text-yellow-800">
+                    🏆 Best Performing Set: {modelSetAnalysis.comparison.bestPerformingSet}
+                  </div>
+                  <div className="text-sm text-yellow-700 mt-1">
+                    Based on success rate and average latency
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {modelSetAnalysis.sets.map((set: any, index: number) => (
+                  <div key={index} className="border rounded-lg p-3 bg-gray-50">
+                    <h4 className="font-semibold text-gray-800 mb-2">{set.name}</h4>
+                    <div className="text-sm space-y-1">
+                      <div>Success Rate: {(set.performance.totalSuccessRate * 100).toFixed(1)}%</div>
+                      <div>Models: {set.models.join(', ')}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Results */}
+      {/* Test Results */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4">
-          Test Results ({testResults.length} tests)
+          Test Results ({testResults.length} tests) - 
+          <span className="text-blue-600">{testResults.filter(r => r.type === 'text').length} Text</span> | 
+          <span className="text-purple-600">{testResults.filter(r => r.type === 'audio').length} Audio</span>
         </h2>
         
         {testResults.length === 0 ? (
           <div className="text-center text-gray-500 py-8">
-            No test results yet. Run some tests to see the comparison!
+            No test results yet. Choose a testing mode and run some tests to see the comparison!
           </div>
         ) : (
           <div className="space-y-6 max-h-96 overflow-y-auto">
             {testResults.map((result, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
-                <div className="font-medium text-gray-900 mb-3">
-                  <span className="text-blue-600">"{result.text}"</span>
-                  {result.accuracyMetrics && (
-                    <span className="ml-2 text-sm text-gray-500">
-                      → {result.accuracyMetrics.referenceTranslation}
+              <div key={result.id} className={`border rounded-lg p-4 ${
+                result.type === 'text' ? 'border-blue-200 bg-blue-50' : 'border-purple-200 bg-purple-50'
+              }`}>
+                {/* Test Header */}
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center space-x-2">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      result.type === 'text' 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-purple-100 text-purple-800'
+                    }`}>
+                      {result.type === 'text' ? '📝 TEXT' : '🎙️ AUDIO'}
                     </span>
-                  )}
+                    <span className="text-sm text-gray-600">{result.language}</span>
+                    {result.type === 'audio' && result.audioScript && (
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                        {result.audioScript.difficulty.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {result.timestamp.toLocaleString()}
+                  </span>
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div className="bg-blue-50 p-3 rounded">
+
+                {/* Audio Test: Original Script vs Transcription */}
+                {result.type === 'audio' && result.audioScript && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                    <div className="bg-white p-3 rounded border">
+                      <h4 className="font-semibold text-gray-800 mb-2">📜 Original Script</h4>
+                      <div className="text-sm text-gray-800 italic">"{result.audioScript.text}"</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        Context: {result.audioScript.context}
+                      </div>
+                    </div>
+                    <div className="bg-white p-3 rounded border">
+                      <h4 className="font-semibold text-gray-800 mb-2">
+                        🎙️ Transcription ({result.transcriptionAccuracy}% accurate)
+                      </h4>
+                      <div className="text-sm text-gray-800 italic">"{result.transcribedText}"</div>
+                      {result.totalLatency && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          Total Pipeline: {result.totalLatency}s
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Text Test: Input Display */}
+                {result.type === 'text' && (
+                  <div className="bg-white p-3 rounded border mb-4">
+                    <h4 className="font-semibold text-gray-800 mb-2">📝 Input Text</h4>
+                    <div className="text-sm text-gray-800 italic">"{result.text}"</div>
+                    {result.accuracyMetrics && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        Reference: {result.accuracyMetrics.referenceTranslation}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Translation Results */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                  {/* MarianMT Results */}
+                  <div className="bg-white p-3 rounded border">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-blue-800">MarianMT</span>
+                      <h4 className="font-semibold text-blue-800">MarianMT</h4>
                       <div className="text-right">
                         <span className={`text-sm font-medium ${
-                          result.marianTime < result.googleTime && result.marianTime > 0 ? 'text-green-600' : 'text-gray-600'
+                          result.marianTime < result.googleTime && result.marianTime > 0 && result.marianTime < (result.chatgptTime || Infinity)
+                            ? 'text-green-600' 
+                            : 'text-gray-600'
                         }`}>
                           {result.marianTime > 0 ? `${result.marianTime.toFixed(3)}s` : 'Failed'}
                         </span>
                       </div>
                     </div>
-                    <div className="text-gray-800 italic mb-2">"{result.marianResult}"</div>
+                    <div className="text-sm text-gray-800 italic mb-2">"{result.marianResult}"</div>
                     
-                    {/* MarianMT Accuracy Metrics */}
                     {result.accuracyMetrics && showAccuracyMetrics && result.marianResult !== 'Failed' && (
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="bg-white p-2 rounded">
+                        <div className="bg-gray-50 p-1 rounded text-center">
                           <div className="font-medium">BLEU: {result.accuracyMetrics.bleuScore.marian}%</div>
                         </div>
-                        <div className="bg-white p-2 rounded">
+                        <div className="bg-gray-50 p-1 rounded text-center">
                           <div className="font-medium">ROUGE: {result.accuracyMetrics.rougeScore.marian}%</div>
-                        </div>
-                        <div className="bg-white p-2 rounded">
-                          <div className="font-medium">Edit Dist: {result.accuracyMetrics.editDistance.marian}</div>
-                        </div>
-                        <div className="bg-white p-2 rounded">
-                          <div className="font-medium">Similarity: {result.accuracyMetrics.semanticSimilarity.marian}%</div>
                         </div>
                       </div>
                     )}
                   </div>
                   
-                  <div className="bg-green-50 p-3 rounded">
+                  {/* Google Translate Results */}
+                  <div className="bg-white p-3 rounded border">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-green-800">Google Translate</span>
+                      <h4 className="font-semibold text-green-800">Google Translate</h4>
                       <div className="text-right">
                         <span className={`text-sm font-medium ${
-                          result.googleTime < result.marianTime && result.googleTime > 0 ? 'text-green-600' : 'text-gray-600'
+                          result.googleTime < result.marianTime && result.googleTime > 0 && result.googleTime < (result.chatgptTime || Infinity)
+                            ? 'text-green-600' 
+                            : 'text-gray-600'
                         }`}>
                           {result.googleTime > 0 ? `${result.googleTime.toFixed(3)}s` : 'Failed'}
                         </span>
                       </div>
                     </div>
-                    <div className="text-gray-800 italic mb-2">"{result.googleResult}"</div>
+                    <div className="text-sm text-gray-800 italic mb-2">"{result.googleResult}"</div>
                     
-                    {/* Google Accuracy Metrics */}
                     {result.accuracyMetrics && showAccuracyMetrics && result.googleResult !== 'Failed' && (
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="bg-white p-2 rounded">
+                        <div className="bg-gray-50 p-1 rounded text-center">
                           <div className="font-medium">BLEU: {result.accuracyMetrics.bleuScore.google}%</div>
                         </div>
-                        <div className="bg-white p-2 rounded">
+                        <div className="bg-gray-50 p-1 rounded text-center">
                           <div className="font-medium">ROUGE: {result.accuracyMetrics.rougeScore.google}%</div>
-                        </div>
-                        <div className="bg-white p-2 rounded">
-                          <div className="font-medium">Edit Dist: {result.accuracyMetrics.editDistance.google}</div>
-                        </div>
-                        <div className="bg-white p-2 rounded">
-                          <div className="font-medium">Similarity: {result.accuracyMetrics.semanticSimilarity.google}%</div>
                         </div>
                       </div>
                     )}
                   </div>
+
+                  {/* ChatGPT Results */}
+                  {result.chatgptResult && result.chatgptResult !== 'N/A' && (
+                    <div className="bg-white p-3 rounded border">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="font-semibold text-purple-800">ChatGPT</h4>
+                        <div className="text-right">
+                          <span className={`text-sm font-medium ${
+                            result.chatgptTime && result.chatgptTime < result.marianTime && result.chatgptTime < result.googleTime
+                              ? 'text-green-600' 
+                              : 'text-gray-600'
+                          }`}>
+                            {result.chatgptTime && result.chatgptTime > 0 ? `${result.chatgptTime.toFixed(3)}s` : 'Failed'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-800 italic mb-2">"{result.chatgptResult}"</div>
+                      
+                      {result.accuracyMetrics && showAccuracyMetrics && result.chatgptResult !== 'Failed' && result.accuracyMetrics.bleuScore.chatgpt && (
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-gray-50 p-1 rounded text-center">
+                            <div className="font-medium">BLEU: {result.accuracyMetrics.bleuScore.chatgpt}%</div>
+                          </div>
+                          <div className="bg-gray-50 p-1 rounded text-center">
+                            <div className="font-medium">ROUGE: {result.accuracyMetrics.rougeScore.chatgpt}%</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Accuracy Comparison Summary */}
-                {result.accuracyMetrics && showAccuracyMetrics && (
+                {/* Accuracy Comparison Summary for Text Tests */}
+                {result.type === 'text' && result.accuracyMetrics && showAccuracyMetrics && (
                   <div className="border-t pt-3">
-                    <div className="text-sm text-gray-600 mb-2">Accuracy Comparison:</div>
+                    <div className="text-sm text-gray-600 mb-2">Accuracy Comparison Winners:</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      {/* BLEU Winner */}
                       <div className={`p-2 rounded text-center ${
-                        result.accuracyMetrics.bleuScore.marian > result.accuracyMetrics.bleuScore.google 
+                        result.accuracyMetrics.bleuScore.marian > result.accuracyMetrics.bleuScore.google &&
+                        (!result.accuracyMetrics.bleuScore.chatgpt || result.accuracyMetrics.bleuScore.marian > result.accuracyMetrics.bleuScore.chatgpt)
                           ? 'bg-blue-100 text-blue-800' 
-                          : result.accuracyMetrics.bleuScore.google > result.accuracyMetrics.bleuScore.marian
+                          : result.accuracyMetrics.bleuScore.google > result.accuracyMetrics.bleuScore.marian &&
+                            (!result.accuracyMetrics.bleuScore.chatgpt || result.accuracyMetrics.bleuScore.google > result.accuracyMetrics.bleuScore.chatgpt)
                           ? 'bg-green-100 text-green-800'
+                          : result.accuracyMetrics.bleuScore.chatgpt && 
+                            result.accuracyMetrics.bleuScore.chatgpt > result.accuracyMetrics.bleuScore.marian &&
+                            result.accuracyMetrics.bleuScore.chatgpt > result.accuracyMetrics.bleuScore.google
+                          ? 'bg-purple-100 text-purple-800'
                           : 'bg-gray-100'
                       }`}>
-                        <div className="font-medium">BLEU Winner</div>
+                        <div className="font-medium">BLEU</div>
                         <div>
-                          {result.accuracyMetrics.bleuScore.marian > result.accuracyMetrics.bleuScore.google 
+                          {result.accuracyMetrics.bleuScore.marian > result.accuracyMetrics.bleuScore.google &&
+                           (!result.accuracyMetrics.bleuScore.chatgpt || result.accuracyMetrics.bleuScore.marian > result.accuracyMetrics.bleuScore.chatgpt)
                             ? 'MarianMT' 
-                            : result.accuracyMetrics.bleuScore.google > result.accuracyMetrics.bleuScore.marian
+                            : result.accuracyMetrics.bleuScore.google > result.accuracyMetrics.bleuScore.marian &&
+                              (!result.accuracyMetrics.bleuScore.chatgpt || result.accuracyMetrics.bleuScore.google > result.accuracyMetrics.bleuScore.chatgpt)
                             ? 'Google'
+                            : result.accuracyMetrics.bleuScore.chatgpt &&
+                              result.accuracyMetrics.bleuScore.chatgpt > result.accuracyMetrics.bleuScore.marian &&
+                              result.accuracyMetrics.bleuScore.chatgpt > result.accuracyMetrics.bleuScore.google
+                            ? 'ChatGPT'
                             : 'Tie'
                           }
                         </div>
                       </div>
+
+                      {/* ROUGE Winner */}
                       <div className={`p-2 rounded text-center ${
-                        result.accuracyMetrics.rougeScore.marian > result.accuracyMetrics.rougeScore.google 
+                        result.accuracyMetrics.rougeScore.marian > result.accuracyMetrics.rougeScore.google &&
+                        (!result.accuracyMetrics.rougeScore.chatgpt || result.accuracyMetrics.rougeScore.marian > result.accuracyMetrics.rougeScore.chatgpt)
                           ? 'bg-blue-100 text-blue-800' 
-                          : result.accuracyMetrics.rougeScore.google > result.accuracyMetrics.rougeScore.marian
+                          : result.accuracyMetrics.rougeScore.google > result.accuracyMetrics.rougeScore.marian &&
+                            (!result.accuracyMetrics.rougeScore.chatgpt || result.accuracyMetrics.rougeScore.google > result.accuracyMetrics.rougeScore.chatgpt)
                           ? 'bg-green-100 text-green-800'
+                          : result.accuracyMetrics.rougeScore.chatgpt &&
+                            result.accuracyMetrics.rougeScore.chatgpt > result.accuracyMetrics.rougeScore.marian &&
+                            result.accuracyMetrics.rougeScore.chatgpt > result.accuracyMetrics.rougeScore.google
+                          ? 'bg-purple-100 text-purple-800'
                           : 'bg-gray-100'
                       }`}>
-                        <div className="font-medium">ROUGE Winner</div>
+                        <div className="font-medium">ROUGE</div>
                         <div>
-                          {result.accuracyMetrics.rougeScore.marian > result.accuracyMetrics.rougeScore.google 
+                          {result.accuracyMetrics.rougeScore.marian > result.accuracyMetrics.rougeScore.google &&
+                           (!result.accuracyMetrics.rougeScore.chatgpt || result.accuracyMetrics.rougeScore.marian > result.accuracyMetrics.rougeScore.chatgpt)
                             ? 'MarianMT' 
-                            : result.accuracyMetrics.rougeScore.google > result.accuracyMetrics.rougeScore.marian
+                            : result.accuracyMetrics.rougeScore.google > result.accuracyMetrics.rougeScore.marian &&
+                              (!result.accuracyMetrics.rougeScore.chatgpt || result.accuracyMetrics.rougeScore.google > result.accuracyMetrics.rougeScore.chatgpt)
                             ? 'Google'
+                            : result.accuracyMetrics.rougeScore.chatgpt &&
+                              result.accuracyMetrics.rougeScore.chatgpt > result.accuracyMetrics.rougeScore.marian &&
+                              result.accuracyMetrics.rougeScore.chatgpt > result.accuracyMetrics.rougeScore.google
+                            ? 'ChatGPT'
                             : 'Tie'
                           }
                         </div>
                       </div>
+
+                      {/* Edit Distance Winner (lower is better) */}
                       <div className={`p-2 rounded text-center ${
-                        result.accuracyMetrics.editDistance.marian < result.accuracyMetrics.editDistance.google 
+                        result.accuracyMetrics.editDistance.marian < result.accuracyMetrics.editDistance.google &&
+                        (!result.accuracyMetrics.editDistance.chatgpt || result.accuracyMetrics.editDistance.marian < result.accuracyMetrics.editDistance.chatgpt)
                           ? 'bg-blue-100 text-blue-800' 
-                          : result.accuracyMetrics.editDistance.google < result.accuracyMetrics.editDistance.marian
+                          : result.accuracyMetrics.editDistance.google < result.accuracyMetrics.editDistance.marian &&
+                            (!result.accuracyMetrics.editDistance.chatgpt || result.accuracyMetrics.editDistance.google < result.accuracyMetrics.editDistance.chatgpt)
                           ? 'bg-green-100 text-green-800'
+                          : result.accuracyMetrics.editDistance.chatgpt &&
+                            result.accuracyMetrics.editDistance.chatgpt < result.accuracyMetrics.editDistance.marian &&
+                            result.accuracyMetrics.editDistance.chatgpt < result.accuracyMetrics.editDistance.google
+                          ? 'bg-purple-100 text-purple-800'
                           : 'bg-gray-100'
                       }`}>
-                        <div className="font-medium">Lower Edit Distance</div>
+                        <div className="font-medium">Edit Distance</div>
                         <div>
-                          {result.accuracyMetrics.editDistance.marian < result.accuracyMetrics.editDistance.google 
+                          {result.accuracyMetrics.editDistance.marian < result.accuracyMetrics.editDistance.google &&
+                           (!result.accuracyMetrics.editDistance.chatgpt || result.accuracyMetrics.editDistance.marian < result.accuracyMetrics.editDistance.chatgpt)
                             ? 'MarianMT' 
-                            : result.accuracyMetrics.editDistance.google < result.accuracyMetrics.editDistance.marian
+                            : result.accuracyMetrics.editDistance.google < result.accuracyMetrics.editDistance.marian &&
+                              (!result.accuracyMetrics.editDistance.chatgpt || result.accuracyMetrics.editDistance.google < result.accuracyMetrics.editDistance.chatgpt)
                             ? 'Google'
+                            : result.accuracyMetrics.editDistance.chatgpt &&
+                              result.accuracyMetrics.editDistance.chatgpt < result.accuracyMetrics.editDistance.marian &&
+                              result.accuracyMetrics.editDistance.chatgpt < result.accuracyMetrics.editDistance.google
+                            ? 'ChatGPT'
                             : 'Tie'
                           }
                         </div>
                       </div>
+
+                      {/* Semantic Similarity Winner */}
                       <div className={`p-2 rounded text-center ${
-                        result.accuracyMetrics.semanticSimilarity.marian > result.accuracyMetrics.semanticSimilarity.google 
+                        result.accuracyMetrics.semanticSimilarity.marian > result.accuracyMetrics.semanticSimilarity.google &&
+                        (!result.accuracyMetrics.semanticSimilarity.chatgpt || result.accuracyMetrics.semanticSimilarity.marian > result.accuracyMetrics.semanticSimilarity.chatgpt)
                           ? 'bg-blue-100 text-blue-800' 
-                          : result.accuracyMetrics.semanticSimilarity.google > result.accuracyMetrics.semanticSimilarity.marian
+                          : result.accuracyMetrics.semanticSimilarity.google > result.accuracyMetrics.semanticSimilarity.marian &&
+                            (!result.accuracyMetrics.semanticSimilarity.chatgpt || result.accuracyMetrics.semanticSimilarity.google > result.accuracyMetrics.semanticSimilarity.chatgpt)
                           ? 'bg-green-100 text-green-800'
+                          : result.accuracyMetrics.semanticSimilarity.chatgpt &&
+                            result.accuracyMetrics.semanticSimilarity.chatgpt > result.accuracyMetrics.semanticSimilarity.marian &&
+                            result.accuracyMetrics.semanticSimilarity.chatgpt > result.accuracyMetrics.semanticSimilarity.google
+                          ? 'bg-purple-100 text-purple-800'
                           : 'bg-gray-100'
                       }`}>
-                        <div className="font-medium">Similarity Winner</div>
+                        <div className="font-medium">Similarity</div>
                         <div>
-                          {result.accuracyMetrics.semanticSimilarity.marian > result.accuracyMetrics.semanticSimilarity.google 
+                          {result.accuracyMetrics.semanticSimilarity.marian > result.accuracyMetrics.semanticSimilarity.google &&
+                           (!result.accuracyMetrics.semanticSimilarity.chatgpt || result.accuracyMetrics.semanticSimilarity.marian > result.accuracyMetrics.semanticSimilarity.chatgpt)
                             ? 'MarianMT' 
-                            : result.accuracyMetrics.semanticSimilarity.google > result.accuracyMetrics.semanticSimilarity.marian
+                            : result.accuracyMetrics.semanticSimilarity.google > result.accuracyMetrics.semanticSimilarity.marian &&
+                              (!result.accuracyMetrics.semanticSimilarity.chatgpt || result.accuracyMetrics.semanticSimilarity.google > result.accuracyMetrics.semanticSimilarity.chatgpt)
                             ? 'Google'
+                            : result.accuracyMetrics.semanticSimilarity.chatgpt &&
+                              result.accuracyMetrics.semanticSimilarity.chatgpt > result.accuracyMetrics.semanticSimilarity.marian &&
+                              result.accuracyMetrics.semanticSimilarity.chatgpt > result.accuracyMetrics.semanticSimilarity.google
+                            ? 'ChatGPT'
                             : 'Tie'
                           }
                         </div>
@@ -784,10 +1617,6 @@ const TranslationTestPage: React.FC = () => {
                     </div>
                   </div>
                 )}
-
-                <div className="mt-3 text-xs text-gray-500">
-                  Tested at {result.timestamp.toLocaleTimeString()} | Language: {result.language}
-                </div>
               </div>
             ))}
           </div>
@@ -797,23 +1626,23 @@ const TranslationTestPage: React.FC = () => {
       {/* Metrics Information */}
       {showAccuracyMetrics && (
         <div className="mt-6 bg-gray-50 rounded-lg p-4">
-          <h3 className="font-semibold text-gray-800 mb-2">📊 Accuracy Metrics Explained</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-700">
+          <h3 className="font-semibold text-gray-800 mb-2">📊 Testing Methodology & Metrics Explained</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-700">
             <div>
-              <div className="font-medium text-blue-600 mb-1">BLEU Score</div>
-              <div>Measures n-gram precision between translation and reference. Higher is better (0-100%).</div>
+              <div className="font-medium text-blue-600 mb-1">📝 Text Testing</div>
+              <div>Direct translation comparison with reference translations. Measures pure translation quality without transcription errors.</div>
             </div>
             <div>
-              <div className="font-medium text-green-600 mb-1">ROUGE Score</div>
-              <div>Measures recall and overlap with reference translation. Higher is better (0-100%).</div>
+              <div className="font-medium text-purple-600 mb-1">🎙️ Audio Testing</div>
+              <div>Complete pipeline testing including speech recognition accuracy and end-to-end latency measurements.</div>
             </div>
             <div>
-              <div className="font-medium text-purple-600 mb-1">Edit Distance</div>
-              <div>Character-level differences (Levenshtein distance). Lower is better.</div>
+              <div className="font-medium text-green-600 mb-1">BLEU/ROUGE Scores</div>
+              <div>Industry-standard metrics measuring translation precision and recall. Higher scores indicate better accuracy.</div>
             </div>
             <div>
-              <div className="font-medium text-orange-600 mb-1">Semantic Similarity</div>
-              <div>Word-based cosine similarity with reference. Higher is better (0-100%).</div>
+              <div className="font-medium text-orange-600 mb-1">Three-Model Analysis</div>
+              <div>Comprehensive comparison across MarianMT, Google Translate, and ChatGPT for optimal model selection.</div>
             </div>
           </div>
         </div>

@@ -2,16 +2,15 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from transformers import MarianMTModel, MarianTokenizer
 import torch
-from googletrans import Translator
+from functools import lru_cache
 import time
+import json
+import os
 from pathlib import Path
 import traceback
 
 app = Flask(__name__)
 CORS(app)
-
-# Initialize Google Translator
-google_translator = Translator()
 
 # Audio test data storage
 AUDIO_TEST_DIR = Path("audio_tests")
@@ -138,7 +137,7 @@ def translate_with_marian(text, target_language):
         if not model or not tokenizer:
             # For Malay, provide specific fallback message
             if target_language.lower() in ["malay", "bahasa", "malaysian", "bahasa_melayu"]:
-                raise ValueError("MarianMT models for Malay are not available. Using Google Translate only for Malay translations.")
+                raise ValueError(f"MarianMT models for Malay are not available. Using Google Translate only for Malay translations.")
             else:
                 raise ValueError(f"Failed to load MarianMT model for {target_language}")
         
@@ -163,6 +162,9 @@ def translate_with_marian(text, target_language):
 def translate_with_google(text, target_language):
     """Translate using Google Translate API"""
     try:
+        from googletrans import Translator
+        google_translator = Translator()
+        
         lang_code = get_google_language_code(target_language)
         result = google_translator.translate(text, dest=lang_code)
         return result.text
@@ -170,6 +172,106 @@ def translate_with_google(text, target_language):
     except Exception as e:
         print(f"Google Translate error: {str(e)}")
         raise
+
+def translate_with_chatgpt(text, target_language):
+    """Translate using ChatGPT/OpenAI API"""
+    try:
+        import openai
+        
+        # Check if OpenAI API key is available
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.")
+        
+        openai.api_key = api_key
+        
+        print(f"Translating with ChatGPT: '{text}' to {target_language}")
+        
+        # Create language mapping for ChatGPT
+        language_names = {
+            'malay': 'Malay (Bahasa Melayu)',
+            'indonesian': 'Indonesian (Bahasa Indonesia)',
+            'french': 'French',
+            'spanish': 'Spanish',
+            'german': 'German',
+            'italian': 'Italian',
+            'japanese': 'Japanese',
+            'chinese': 'Chinese (Simplified)',
+            'portuguese': 'Portuguese',
+            'dutch': 'Dutch',
+            'korean': 'Korean',
+            'thai': 'Thai',
+            'vietnamese': 'Vietnamese',
+        }
+        
+        target_lang_name = language_names.get(target_language.lower(), target_language)
+        
+        # Create prompt for ChatGPT
+        prompt = f"""Translate the following English text to {target_lang_name}. 
+
+Provide only the translation without any additional explanation or commentary.
+
+Text to translate: "{text}"
+
+Translation:"""
+        
+        # Call OpenAI API
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Using GPT-3.5-turbo for cost efficiency
+            messages=[
+                {"role": "system", "content": "You are a professional translator. Provide accurate, natural translations without any additional commentary."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.1  # Low temperature for consistent translations
+        )
+        
+        translation = response.choices[0].message.content.strip()
+        
+        # Remove any quotation marks that might be added
+        if translation.startswith('"') and translation.endswith('"'):
+            translation = translation[1:-1]
+        
+        return translation
+        
+    except ImportError:
+        raise ValueError("OpenAI library not installed. Install with: pip install openai")
+    except Exception as e:
+        print(f"ChatGPT translation error: {str(e)}")
+        raise
+
+def apply_context_adaptation(
+    text, base_translation, source_lang, target_lang, context_info
+):
+    """Apply context-aware adaptations to the base translation"""
+    adapted_translation = base_translation
+
+    # Apply domain-specific adaptations
+    if context_info and "domain" in context_info:
+        domain = context_info["domain"]
+        if domain == "museum_tour" and target_lang == "fr":
+            # French museum context adaptations
+            adapted_translation = adapted_translation.replace("pièce", "œuvre")
+            adapted_translation = adapted_translation.replace("montrer", "présenter")
+
+        elif domain == "art_gallery" and target_lang == "fr":
+            # French art gallery context adaptations
+            adapted_translation = adapted_translation.replace("pièce", "tableau")
+
+    # Apply name completions
+    if context_info and "key_references" in context_info:
+        references = context_info["key_references"]
+        for name, confidence in references.items():
+            if confidence > 0.7:
+                if (
+                    "leonardo" in adapted_translation.lower()
+                    and "leonardo" in name.lower()
+                ):
+                    adapted_translation = adapted_translation.replace(
+                        "Leonardo", "Leonardo da Vinci"
+                    )
+
+    return adapted_translation
 
 @app.route('/translate', methods=['POST'])
 def translate():
@@ -182,6 +284,7 @@ def translate():
         text = data['text']
         target_language = data['targetLanguage']
         model_type = data.get('model', 'marian')  # Default to MarianMT
+        context_info = data.get('context', None)
         
         print(f"Translating: '{text}' to {target_language} using {model_type}")
         
@@ -191,6 +294,12 @@ def translate():
             translation = translate_with_google(text, target_language)
         else:  # Default to MarianMT
             translation = translate_with_marian(text, target_language)
+        
+        # Apply context adaptation if provided
+        if context_info:
+            translation = apply_context_adaptation(
+                text, translation, "en", target_language.lower(), context_info
+            )
         
         end_time = time.time()
         latency = end_time - start_time
@@ -208,9 +317,39 @@ def translate():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/translate-chatgpt', methods=['POST'])
+def translate_chatgpt():
+    """Translate using ChatGPT/OpenAI API"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data or 'targetLanguage' not in data:
+            return jsonify({"error": "Missing required fields: text, targetLanguage"}), 400
+        
+        text = data['text']
+        target_language = data['targetLanguage']
+        
+        start_time = time.time()
+        translation = translate_with_chatgpt(text, target_language)
+        end_time = time.time()
+        latency = end_time - start_time
+        
+        return jsonify({
+            "translation": translation,
+            "source_text": text,
+            "target_language": target_language,
+            "model": "ChatGPT",
+            "latency": round(latency, 3)
+        })
+        
+    except Exception as e:
+        print(f"ChatGPT translation error: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/compare', methods=['POST'])
 def compare_translations():
-    """Compare translations from both models with enhanced error handling"""
+    """Compare translations from MarianMT and Google Translate with enhanced error handling"""
     try:
         data = request.get_json()
         
@@ -314,6 +453,214 @@ def compare_translations():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/compare-three', methods=['POST'])
+def compare_three_models():
+    """Compare translations from all three models"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data or 'targetLanguage' not in data:
+            return jsonify({"error": "Missing required fields: text, targetLanguage"}), 400
+        
+        text = data['text']
+        target_language = data['targetLanguage']
+        
+        print(f"Comparing all three models for: '{text}' to {target_language}")
+        
+        # Initialize results
+        results = {}
+        
+        # Try MarianMT translation
+        try:
+            start_time = time.time()
+            marian_translation = translate_with_marian(text, target_language)
+            marian_time = time.time() - start_time
+            results["marian"] = {
+                "translation": marian_translation,
+                "latency": round(marian_time, 3),
+                "model": "MarianMT",
+                "status": "success"
+            }
+        except Exception as e:
+            results["marian"] = {
+                "translation": None,
+                "latency": 0,
+                "model": "MarianMT",
+                "status": "failed",
+                "error": str(e)
+            }
+        
+        # Try Google Translate
+        try:
+            start_time = time.time()
+            google_translation = translate_with_google(text, target_language)
+            google_time = time.time() - start_time
+            results["google"] = {
+                "translation": google_translation,
+                "latency": round(google_time, 3),
+                "model": "Google Translate",
+                "status": "success"
+            }
+        except Exception as e:
+            results["google"] = {
+                "translation": None,
+                "latency": 0,
+                "model": "Google Translate",
+                "status": "failed",
+                "error": str(e)
+            }
+        
+        # Try ChatGPT translation
+        try:
+            start_time = time.time()
+            chatgpt_translation = translate_with_chatgpt(text, target_language)
+            chatgpt_time = time.time() - start_time
+            results["chatgpt"] = {
+                "translation": chatgpt_translation,
+                "latency": round(chatgpt_time, 3),
+                "model": "ChatGPT",
+                "status": "success"
+            }
+        except Exception as e:
+            results["chatgpt"] = {
+                "translation": None,
+                "latency": 0,
+                "model": "ChatGPT",
+                "status": "failed",
+                "error": str(e)
+            }
+        
+        # Calculate comparisons between successful translations
+        successful_models = [k for k, v in results.items() if v["status"] == "success"]
+        
+        comparison = {
+            "successful_models": successful_models,
+            "total_models": len(results),
+            "success_rate": len(successful_models) / len(results)
+        }
+        
+        # Add pairwise comparisons if we have successful translations
+        if len(successful_models) >= 2:
+            comparison["pairwise"] = {}
+            for i, model1 in enumerate(successful_models):
+                for model2 in successful_models[i+1:]:
+                    trans1 = results[model1]["translation"]
+                    trans2 = results[model2]["translation"]
+                    
+                    comparison["pairwise"][f"{model1}_vs_{model2}"] = {
+                        "are_same": trans1.lower().strip() == trans2.lower().strip(),
+                        "length_diff": len(trans2) - len(trans1),
+                        "speed_diff": round(results[model2]["latency"] - results[model1]["latency"], 3)
+                    }
+        
+        return jsonify({
+            "source_text": text,
+            "target_language": target_language,
+            "results": results,
+            "comparison": comparison
+        })
+        
+    except Exception as e:
+        print(f"Three-model comparison error: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/compare-custom', methods=['POST'])
+def compare_custom_models():
+    """Compare translations from selected models"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data or 'targetLanguage' not in data or 'models' not in data:
+            return jsonify({"error": "Missing required fields: text, targetLanguage, models"}), 400
+        
+        text = data['text']
+        target_language = data['targetLanguage']
+        selected_models = data['models']  # List of model names to compare
+        
+        print(f"Comparing selected models {selected_models} for: '{text}' to {target_language}")
+        
+        results = {}
+        
+        # Translate with each selected model
+        for model in selected_models:
+            if model == 'marian':
+                try:
+                    start_time = time.time()
+                    translation = translate_with_marian(text, target_language)
+                    latency = time.time() - start_time
+                    results["marian"] = {
+                        "translation": translation,
+                        "latency": round(latency, 3),
+                        "model": "MarianMT",
+                        "status": "success"
+                    }
+                except Exception as e:
+                    results["marian"] = {
+                        "translation": None,
+                        "latency": 0,
+                        "model": "MarianMT",
+                        "status": "failed",
+                        "error": str(e)
+                    }
+            
+            elif model == 'google':
+                try:
+                    start_time = time.time()
+                    translation = translate_with_google(text, target_language)
+                    latency = time.time() - start_time
+                    results["google"] = {
+                        "translation": translation,
+                        "latency": round(latency, 3),
+                        "model": "Google Translate",
+                        "status": "success"
+                    }
+                except Exception as e:
+                    results["google"] = {
+                        "translation": None,
+                        "latency": 0,
+                        "model": "Google Translate",
+                        "status": "failed",
+                        "error": str(e)
+                    }
+            
+            elif model == 'chatgpt':
+                try:
+                    start_time = time.time()
+                    translation = translate_with_chatgpt(text, target_language)
+                    latency = time.time() - start_time
+                    results["chatgpt"] = {
+                        "translation": translation,
+                        "latency": round(latency, 3),
+                        "model": "ChatGPT",
+                        "status": "success"
+                    }
+                except Exception as e:
+                    results["chatgpt"] = {
+                        "translation": None,
+                        "latency": 0,
+                        "model": "ChatGPT",
+                        "status": "failed",
+                        "error": str(e)
+                    }
+        
+        # Calculate success metrics
+        successful_models = [k for k, v in results.items() if v["status"] == "success"]
+        
+        return jsonify({
+            "source_text": text,
+            "target_language": target_language,
+            "selected_models": selected_models,
+            "results": results,
+            "successful_models": successful_models,
+            "success_rate": len(successful_models) / len(selected_models) if selected_models else 0
+        })
+        
+    except Exception as e:
+        print(f"Custom model comparison error: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/test-audio', methods=['POST'])
 def test_audio_translation():
     """Test translation with predefined audio test cases"""
@@ -353,12 +700,20 @@ def test_audio_translation():
         for text in test_texts:
             # Compare both models for each test case
             start_time = time.time()
-            marian_translation = translate_with_marian(text, target_language)
-            marian_time = time.time() - start_time
+            try:
+                marian_translation = translate_with_marian(text, target_language)
+                marian_time = time.time() - start_time
+            except:
+                marian_translation = "Failed"
+                marian_time = 0
             
             start_time = time.time()
-            google_translation = translate_with_google(text, target_language)
-            google_time = time.time() - start_time
+            try:
+                google_translation = translate_with_google(text, target_language)
+                google_time = time.time() - start_time
+            except:
+                google_translation = "Failed"
+                google_time = 0
             
             results.append({
                 "original": text,
@@ -373,8 +728,11 @@ def test_audio_translation():
             })
         
         # Calculate average performance
-        avg_marian_time = sum(r["marian"]["latency"] for r in results) / len(results)
-        avg_google_time = sum(r["google"]["latency"] for r in results) / len(results)
+        valid_marian = [r["marian"]["latency"] for r in results if r["marian"]["translation"] != "Failed"]
+        valid_google = [r["google"]["latency"] for r in results if r["google"]["translation"] != "Failed"]
+        
+        avg_marian_time = sum(valid_marian) / len(valid_marian) if valid_marian else 0
+        avg_google_time = sum(valid_google) / len(valid_google) if valid_google else 0
         
         return jsonify({
             "test_case": test_case,
@@ -384,7 +742,7 @@ def test_audio_translation():
                 "total_tests": len(results),
                 "avg_marian_latency": round(avg_marian_time, 3),
                 "avg_google_latency": round(avg_google_time, 3),
-                "faster_model": "MarianMT" if avg_marian_time < avg_google_time else "Google Translate"
+                "faster_model": "MarianMT" if avg_marian_time < avg_google_time and avg_marian_time > 0 else "Google Translate"
             }
         })
         
@@ -419,11 +777,13 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy",
-        "models": ["MarianMT", "Google Translate"],
+        "models": ["MarianMT", "Google Translate", "ChatGPT"],
         "cuda_available": torch.cuda.is_available()
     })
 
 if __name__ == "__main__":
     print("Starting enhanced translation server on port 5000...")
-    print("Features: MarianMT + Google Translate comparison, Malay support, Audio testing")
+    print("Features: MarianMT + Google Translate + ChatGPT comparison, Malay support, Audio testing")
+    print("Models available: MarianMT, Google Translate, ChatGPT")
+    print("Endpoints: /translate, /compare, /compare-three, /compare-custom, /test-audio, /languages, /health")
     app.run(port=5000, debug=True)
