@@ -1,5 +1,5 @@
 interface LanguageConfig {
-  segmenter: Intl.Segmenter;
+  segmenter?: any; // Make segmenter optional
   isLatinScript: boolean;
 }
 
@@ -11,21 +11,58 @@ interface TranslationMetrics {
   issues: string[];
 }
 
+// Check if Intl.Segmenter is available
+const hasSegmenterSupport = typeof Intl !== 'undefined' && 'Segmenter' in Intl;
+
+// Fallback tokenizer for when Intl.Segmenter is not available
+function fallbackTokenizer(text: string, language: string): string[] {
+  if (!text) return [];
+  
+  // For CJK languages, try to split on common characters
+  if (language === 'zh' || language === 'ja' || language === 'ko') {
+    // Basic CJK tokenization - split each character for now
+    return text.split('').filter(char => char.trim() !== '');
+  }
+  
+  // For Latin scripts, split on whitespace and punctuation
+  return text
+    .toLowerCase()
+    .split(/[\s\p{P}]+/u)
+    .filter(token => token.length > 0);
+}
+
+// Helper function to tokenize text
+function tokenizeText(text: string, language: string): string[] {
+  if (!text) return [];
+  
+  if (hasSegmenterSupport) {
+    try {
+      const segmenter = new (Intl as any).Segmenter(language, { granularity: "word" });
+      return Array.from(segmenter.segment(text)).map((segment: any) => segment.segment);
+    } catch (error) {
+      console.warn('Intl.Segmenter failed, falling back to basic tokenization:', error);
+      return fallbackTokenizer(text, language);
+    }
+  } else {
+    return fallbackTokenizer(text, language);
+  }
+}
+
 const getLanguageConfig = (language: string): LanguageConfig => {
   switch (language) {
     case "Chinese":
       return {
-        segmenter: new Intl.Segmenter("zh", { granularity: "word" }),
+        segmenter: hasSegmenterSupport ? 'zh' : null,
         isLatinScript: false,
       };
     case "Japanese":
       return {
-        segmenter: new Intl.Segmenter("ja", { granularity: "word" }),
+        segmenter: hasSegmenterSupport ? 'ja' : null,
         isLatinScript: false,
       };
     default:
       return {
-        segmenter: new Intl.Segmenter("en", { granularity: "word" }),
+        segmenter: hasSegmenterSupport ? 'en' : null,
         isLatinScript: true,
       };
   }
@@ -38,14 +75,11 @@ export function computeBLEU(
 ): number {
   try {
     const config = getLanguageConfig(targetLanguage);
+    const langCode = config.segmenter || 'en';
 
-    // Segment the text appropriately based on language
-    const candidateTokens = Array.from(config.segmenter.segment(candidate)).map(
-      (segment) => segment.segment
-    );
-    const referenceTokens = Array.from(config.segmenter.segment(reference)).map(
-      (segment) => segment.segment
-    );
+    // Tokenize the text using our helper function
+    const candidateTokens = tokenizeText(candidate, langCode);
+    const referenceTokens = tokenizeText(reference, langCode);
 
     // Compute n-gram precision for n=1 to 4
     const maxN = 4;
@@ -83,13 +117,10 @@ export function computeROUGE(
 ): number {
   try {
     const config = getLanguageConfig(targetLanguage);
+    const langCode = config.segmenter || 'en';
 
-    const candidateTokens = Array.from(config.segmenter.segment(candidate)).map(
-      (segment) => segment.segment
-    );
-    const referenceTokens = Array.from(config.segmenter.segment(reference)).map(
-      (segment) => segment.segment
-    );
+    const candidateTokens = tokenizeText(candidate, langCode);
+    const referenceTokens = tokenizeText(reference, langCode);
 
     // Compute ROUGE-L using longest common subsequence
     const lcs = longestCommonSubsequence(candidateTokens, referenceTokens);
@@ -124,13 +155,10 @@ export async function computeSemanticSimilarity(
 ): Promise<number> {
   try {
     const config = getLanguageConfig(targetLanguage);
+    const langCode = config.segmenter || 'en';
 
-    const words1 = Array.from(config.segmenter.segment(text1)).map(
-      (segment) => segment.segment
-    );
-    const words2 = Array.from(config.segmenter.segment(text2)).map(
-      (segment) => segment.segment
-    );
+    const words1 = tokenizeText(text1, langCode);
+    const words2 = tokenizeText(text2, langCode);
 
     // Create arrays of unique words
     const uniqueWords1 = Array.from(new Set(words1));
@@ -144,6 +172,9 @@ export async function computeSemanticSimilarity(
     // Calculate Jaccard similarity
     const unionSize =
       uniqueWords1.length + uniqueWords2.length - commonWords.length;
+    
+    if (unionSize === 0) return 0;
+    
     const similarity = (commonWords.length / unionSize) * 100;
 
     return similarity;
@@ -164,18 +195,20 @@ export function analyzeTranslation(
     let errorCount = 0;
 
     const config = getLanguageConfig(targetLanguage);
+    const langCode = config.segmenter || 'en';
 
     // Compare lengths
-    const machineSegments = Array.from(config.segmenter.segment(machine)).map(
-      (segment) => segment.segment
-    );
-    const referenceSegments = Array.from(
-      config.segmenter.segment(reference)
-    ).map((segment) => segment.segment);
+    const machineSegments = tokenizeText(machine, langCode);
+    const referenceSegments = tokenizeText(reference, langCode);
+
+    if (referenceSegments.length === 0) {
+      return { errorRate: 100, issues: ["Empty reference translation"] };
+    }
 
     const lengthDiff =
       Math.abs(machineSegments.length - referenceSegments.length) /
       referenceSegments.length;
+    
     if (lengthDiff > 0.3) {
       issues.push("Significant length difference from reference translation");
       errorCount++;
@@ -187,8 +220,8 @@ export function analyzeTranslation(
     );
 
     if (missingSegments.length > 0) {
-      issues.push("Missing key elements: " + missingSegments.join(", "));
-      errorCount += missingSegments.length;
+      issues.push("Missing key elements: " + missingSegments.slice(0, 3).join(", "));
+      errorCount += Math.min(missingSegments.length, 3); // Cap the error count
     }
 
     // Check for language-specific issues
@@ -200,7 +233,7 @@ export function analyzeTranslation(
       }
     }
 
-    const errorRate = (errorCount / referenceSegments.length) * 100;
+    const errorRate = Math.min(100, (errorCount / referenceSegments.length) * 100);
     return { errorRate, issues };
   } catch (error) {
     console.error("Error analyzing translation:", error);
@@ -212,7 +245,7 @@ export function analyzeTranslation(
 function getNGrams(tokens: string[], n: number): string[] {
   const ngrams: string[] = [];
   for (let i = 0; i <= tokens.length - n; i++) {
-    ngrams.push(tokens.slice(i, i + n).join(""));
+    ngrams.push(tokens.slice(i, i + n).join(" "));
   }
   return ngrams;
 }
@@ -246,11 +279,16 @@ export function evaluateTranslation(
   try {
     const bleuScore = computeBLEU(machine, reference, targetLanguage);
     const rougeScore = computeROUGE(machine, reference, targetLanguage);
-    const semanticScore = computeSemanticSimilarity(
-      machine,
-      reference,
-      targetLanguage
-    );
+    
+    // Handle the async semantic similarity
+    let semanticScore = 0;
+    computeSemanticSimilarity(machine, reference, targetLanguage)
+      .then(score => semanticScore = score)
+      .catch(error => {
+        console.error("Error computing semantic similarity:", error);
+        semanticScore = 0;
+      });
+
     const { errorRate, issues } = analyzeTranslation(
       source,
       machine,
@@ -261,7 +299,7 @@ export function evaluateTranslation(
     return {
       bleuScore,
       rougeScore,
-      semanticScore: semanticScore instanceof Promise ? 0 : semanticScore,
+      semanticScore,
       errorRate,
       issues,
     };

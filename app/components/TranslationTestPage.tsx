@@ -129,12 +129,13 @@ const TranslationTestPage: React.FC = () => {
   const [isServiceOnline, setIsServiceOnline] = useState<boolean | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [currentTest, setCurrentTest] = useState<string>('');
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('malay');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('french');
   const [selectedTestSet, setSelectedTestSet] = useState<string>('museum_tour');
   const [isRunningTests, setIsRunningTests] = useState<boolean>(false);
   const [showAccuracyMetrics, setShowAccuracyMetrics] = useState<boolean>(true);
   const [testingMode, setTestingMode] = useState<'text' | 'audio'>('text');
   const [selectedModels, setSelectedModels] = useState<ModelName[]>(['marian', 'm2m100']);
+  const [referenceModel, setReferenceModel] = useState<ModelName>('google');
 
   // Audio testing state
   const [isRecording, setIsRecording] = useState(false);
@@ -150,128 +151,173 @@ const TranslationTestPage: React.FC = () => {
 
   // Language definitions
   const languages: Language[] = [
-    { code: 'malay', name: 'Malay', native: 'Bahasa Melayu', flag: '🇲🇾', supported: { marian: true, google: true } },
-    { code: 'chinese', name: 'Chinese', native: '中文', flag: '🇨🇳', supported: { marian: true, google: true } },
-    { code: 'tamil', name: 'Tamil', native: 'தமிழ்', flag: '🇮🇳', supported: { marian: true, google: true } },
-    { code: 'french', name: 'French', native: 'Français', flag: '🇫🇷', supported: { marian: true, google: true } },
-    { code: 'spanish', name: 'Spanish', native: 'Español', flag: '🇪🇸', supported: { marian: true, google: true } },
-    { code: 'german', name: 'German', native: 'Deutsch', flag: '🇩🇪', supported: { marian: true, google: true } },
-    { code: 'japanese', name: 'Japanese', native: '日本語', flag: '🇯🇵', supported: { marian: false, google: true } },
-    { code: 'korean', name: 'Korean', native: '한국어', flag: '🇰🇷', supported: { marian: false, google: true } }
+    { code: 'chinese', name: 'Chinese', native: '中文', flag: '🇨🇳', supported: { marian: true, google: true }},
+    { code: 'tamil', name: 'Tamil', native: 'தமிழ்', flag: '🇮🇳', supported: { marian: true, google: true }},
+    { code: 'french', name: 'French', native: 'Français', flag: '🇫🇷', supported: { marian: true, google: true }},
+    { code: 'spanish', name: 'Spanish', native: 'Español', flag: '🇪🇸', supported: { marian: true, google: true }},
+    { code: 'german', name: 'German', native: 'Deutsch', flag: '🇩🇪', supported: { marian: true, google: true }},
   ];
 
-  // Test scripts for audio testing
-  const testScripts = {
+  // Test script collections organized by difficulty
+  const testScripts: { [key in 'easy' | 'medium' | 'hard']: TestScript[] } = {
     easy: [
       {
-        id: 'easy_welcome',
-        text: 'Welcome to the National Museum. Please follow me for the guided tour.',
-        context: 'Museum greeting',
-        difficulty: 'easy' as const,
-        keywords: ['welcome', 'museum', 'follow', 'tour'],
-        expectedChallenges: ['Clear pronunciation', 'Basic vocabulary']
+        id: 'museum_easy_1',
+        text: 'Welcome to the museum. This tour will last about one hour.',
+        context: 'Museum entrance greeting',
+        difficulty: 'easy',
+        keywords: ['museum', 'tour', 'hour'],
+        expectedChallenges: ['Time duration translation']
       },
       {
-        id: 'easy_directions',
-        text: 'This way to the historical artifacts section. We have many ancient items here.',
-        context: 'Navigation',
-        difficulty: 'easy' as const,
-        keywords: ['way', 'historical', 'artifacts', 'ancient'],
-        expectedChallenges: ['Direction words', 'Simple descriptions']
+        id: 'museum_easy_2', 
+        text: 'This piece is from ancient Egypt. It was discovered in 1920.',
+        context: 'Artifact description',
+        difficulty: 'easy',
+        keywords: ['ancient', 'Egypt', 'discovered'],
+        expectedChallenges: ['Historical dates', 'Proper nouns']
       }
     ],
     medium: [
       {
-        id: 'medium_architecture',
-        text: 'This building showcases traditional Malaysian architecture, blending Islamic, Chinese, and Indian influences.',
-        context: 'Cultural explanation',
-        difficulty: 'medium' as const,
-        keywords: ['traditional', 'architecture', 'Islamic', 'Chinese', 'Indian', 'cultural'],
-        expectedChallenges: ['Cultural terms', 'Multiple ethnicities', 'Architectural vocabulary']
+        id: 'museum_medium_1',
+        text: 'The intricate carvings on this sarcophagus represent the journey to the afterlife according to Egyptian mythology.',
+        context: 'Detailed artifact explanation',
+        difficulty: 'medium',
+        keywords: ['intricate', 'sarcophagus', 'afterlife', 'mythology'],
+        expectedChallenges: ['Technical vocabulary', 'Cultural concepts']
       },
       {
-        id: 'medium_ceremony',
-        text: 'The royal coronation ceremony incorporates ancient rituals that have been preserved for over six hundred years.',
-        context: 'Ceremonial description',
-        difficulty: 'medium' as const,
-        keywords: ['coronation', 'ceremony', 'rituals', 'preserved', 'hundred'],
-        expectedChallenges: ['Formal language', 'Historical context', 'Time expressions']
+        id: 'museum_medium_2',
+        text: 'This Renaissance painting employs the technique of chiaroscuro, creating dramatic contrast between light and shadow.',
+        context: 'Art technique description',
+        difficulty: 'medium',
+        keywords: ['Renaissance', 'chiaroscuro', 'contrast'],
+        expectedChallenges: ['Art terminology', 'Italian loanwords']
       }
     ],
     hard: [
       {
-        id: 'hard_archaeological',
-        text: 'The stratigraphic analysis reveals that this particular stratum contains ceramic fragments characteristic of the transitional period between the Hindu-Buddhist and Islamic epochs in Southeast Asian civilization.',
-        context: 'Academic archaeological description',
-        difficulty: 'hard' as const,
-        keywords: ['stratigraphic', 'stratum', 'ceramic', 'transitional', 'Hindu-Buddhist', 'Islamic', 'epochs', 'civilization'],
-        expectedChallenges: ['Academic vocabulary', 'Technical terminology', 'Complex sentence structure', 'Historical periods']
+        id: 'museum_hard_1',
+        text: 'The provenance of this particular artifact has been meticulously documented through dendrochronological analysis and thermoluminescence dating.',
+        context: 'Scientific authentication explanation',
+        difficulty: 'hard',
+        keywords: ['provenance', 'dendrochronological', 'thermoluminescence'],
+        expectedChallenges: ['Scientific terminology', 'Complex compound words']
+      },
+      {
+        id: 'museum_hard_2',
+        text: 'The iconographic program of this Byzantine mosaic reflects the theological disputes of the Iconoclastic period.',
+        context: 'Art historical analysis',
+        difficulty: 'hard',
+        keywords: ['iconographic', 'Byzantine', 'theological', 'Iconoclastic'],
+        expectedChallenges: ['Academic terminology', 'Historical periods']
       }
     ]
   };
 
-  // Test sets for text testing
+  // Pre-defined test sets for comprehensive evaluation
   const testSets = {
     museum_tour: {
-      name: 'Museum Tour Guide',
-      category: 'Tourism',
+      name: 'Museum Tour Scripts',
+      description: 'Realistic museum tour dialogues with cultural and historical content',
       tests: [
-        'Welcome to our national museum. This building houses over 10,000 artifacts from Malaysian history.',
-        'The ancient Malay kingdoms flourished through maritime trade with China and India.',
-        'This ceremonial sword belonged to Sultan Abdullah and dates back to the 16th century.',
-        'Traditional batik patterns often incorporate Islamic geometric designs with natural motifs.'
+        'Welcome to the National Gallery. Today we will explore masterpieces from the Renaissance period.',
+        'This painting was created by Leonardo da Vinci in 1503. Notice the subtle smile and mysterious expression.',
+        'The technique used here is called sfumato, which creates soft transitions between colors and tones.',
+        'Moving to our next exhibit, we have artifacts from ancient civilizations dating back 3000 years.',
+        'This piece represents the cultural exchange between East and West during the Silk Road era.'
       ]
     },
-    technical: {
-      name: 'Technical Documentation',
-      category: 'Technical',
+    tourist_conversation: {
+      name: 'Tourist Conversations',
+      description: 'Common tourist interactions and inquiries',
       tests: [
-        'The application utilizes machine learning algorithms for real-time speech recognition.',
-        'Database optimization requires indexing strategies and query performance monitoring.',
-        'The API endpoint returns JSON responses with nested object structures.',
-        'Authentication middleware validates JWT tokens and manages session state.'
+        'Excuse me, where is the nearest restroom?',
+        'How much does it cost to enter the exhibition?',
+        'What time does the museum close today?',
+        'Can you recommend a good restaurant nearby?',
+        'Is photography allowed in this section?'
+      ]
+    },
+    technical_descriptions: {
+      name: 'Technical Descriptions',
+      description: 'Complex technical and academic language',
+      tests: [
+        'The archaeological stratigraphy reveals multiple occupation layers spanning several millennia.',
+        'This artifact underwent comprehensive conservation treatment including surface cleaning and structural stabilization.',
+        'The iconographic analysis suggests strong Byzantine influences in the decorative program.',
+        'Radiocarbon dating places this specimen in the late Paleolithic period.',
+        'The curatorial interpretation emphasizes the socio-political context of the work.'
       ]
     }
   };
 
-  // Model sets for comparison
-  const predefinedSets: ModelSet[] = [
-    { name: 'All Models', models: ['marian', 'google', 'chatgpt'] },
-    { name: 'MT Only', models: ['marian', 'google'] },
-    { name: 'AI Focus', models: ['google', 'chatgpt'] }
-  ];
+  // Enhanced accuracy metrics calculation
+  const calculateAccuracyMetrics = (translation1: string, translation2: string, reference: string) => {
+    // Simple BLEU score approximation
+    const calculateBLEU = (candidate: string, reference: string): number => {
+      const candidateWords = candidate.toLowerCase().split(/\s+/);
+      const referenceWords = reference.toLowerCase().split(/\s+/);
+      const matches = candidateWords.filter(word => referenceWords.includes(word));
+      return matches.length / Math.max(candidateWords.length, 1);
+    };
 
-  // Initialize speech recognition
-  useEffect(() => {
-    if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
+    // Simple ROUGE score approximation
+    const calculateROUGE = (candidate: string, reference: string): number => {
+      const candidateWords = new Set(candidate.toLowerCase().split(/\s+/));
+      const referenceWords = new Set(reference.toLowerCase().split(/\s+/));
+      const intersection = new Set([...candidateWords].filter(word => referenceWords.has(word)));
+      return intersection.size / Math.max(referenceWords.size, 1);
+    };
+
+    // Edit distance (Levenshtein distance)
+    const calculateEditDistance = (str1: string, str2: string): number => {
+      const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
       
-      if (recognitionRef.current) {
-        recognitionRef.current.continuous = true;
-        recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = 'en-US';
-
-        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-          const transcript = Array.from(event.results)
-            .map((result: any) => result[0].transcript)
-            .join('');
-          setTranscriptionText(transcript);
-        };
-
-        recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
-          console.error('Speech recognition error:', event.error);
-          setIsRecording(false);
-        };
-
-        recognitionRef.current.onend = () => {
-          setIsRecording(false);
-        };
+      for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+      for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+      
+      for (let j = 1; j <= str2.length; j++) {
+        for (let i = 1; i <= str1.length; i++) {
+          const substitutionCost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+          matrix[j][i] = Math.min(
+            matrix[j][i - 1] + 1,
+            matrix[j - 1][i] + 1,
+            matrix[j - 1][i - 1] + substitutionCost
+          );
+        }
       }
-    }
-  }, []);
+      
+      return matrix[str2.length][str1.length];
+    };
 
-  // Service status check
+    // Semantic similarity approximation (based on common words)
+    const calculateSemanticSimilarity = (candidate: string, reference: string): number => {
+      const candidateWords = new Set(candidate.toLowerCase().split(/\s+/));
+      const referenceWords = new Set(reference.toLowerCase().split(/\s+/));
+      const union = new Set([...candidateWords, ...referenceWords]);
+      const intersection = new Set([...candidateWords].filter(word => referenceWords.has(word)));
+      return intersection.size / union.size;
+    };
+
+    return {
+      model1: {
+        bleuScore: calculateBLEU(translation1, reference),
+        rougeScore: calculateROUGE(translation1, reference),
+        editDistance: calculateEditDistance(translation1, reference),
+        semanticSimilarity: calculateSemanticSimilarity(translation1, reference)
+      },
+      model2: {
+        bleuScore: calculateBLEU(translation2, reference),
+        rougeScore: calculateROUGE(translation2, reference),
+        editDistance: calculateEditDistance(translation2, reference),
+        semanticSimilarity: calculateSemanticSimilarity(translation2, reference)
+      }
+    };
+  };
+
+  // Service health check
   useEffect(() => {
     const checkServiceStatus = async () => {
       try {
@@ -320,147 +366,64 @@ const TranslationTestPage: React.FC = () => {
     const a = document.createElement('a');
     a.href = url;
     a.download = 'audio-test-scripts.txt';
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const generateRandomScript = () => {
-    const scripts = testScripts[selectedDifficulty];
-    const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
-    setCurrentScript(randomScript);
-    setTranscriptionText('');
-  };
+  // Audio recording functions
+  const startRecording = () => {
+    if (!currentScript) return;
 
-  const startRecording = async () => {
-    if (!recognitionRef.current) return;
+    // Web Speech API for transcription
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setTranscriptionText(transcript);
       };
 
-      mediaRecorder.start();
-      recognitionRef.current.start();
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
       setIsRecording(true);
-    } catch (error) {
-      console.error('Error starting recording:', error);
     }
   };
 
   const stopRecording = () => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
+      setIsRecording(false);
     }
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-    
-    setIsRecording(false);
   };
 
-  // Helper function to calculate BLEU and ROUGE scores
-  const calculateAccuracyMetrics = (translation1: string, translation2: string, referenceTranslation: string) => {
-    // Simple BLEU score approximation (word-level n-gram overlap)
-    const calculateBLEU = (candidate: string, reference: string): number => {
-      const candidateWords = candidate.toLowerCase().split(/\s+/);
-      const referenceWords = reference.toLowerCase().split(/\s+/);
-      
-      if (candidateWords.length === 0) return 0;
-      
-      let matches = 0;
-      candidateWords.forEach(word => {
-        if (referenceWords.includes(word)) {
-          matches++;
-        }
-      });
-      
-      return matches / candidateWords.length;
-    };
-
-    // Simple ROUGE score approximation (recall-based)
-    const calculateROUGE = (candidate: string, reference: string): number => {
-      const candidateWords = candidate.toLowerCase().split(/\s+/);
-      const referenceWords = reference.toLowerCase().split(/\s+/);
-      
-      if (referenceWords.length === 0) return 0;
-      
-      let matches = 0;
-      referenceWords.forEach(word => {
-        if (candidateWords.includes(word)) {
-          matches++;
-        }
-      });
-      
-      return matches / referenceWords.length;
-    };
-
-    // Edit distance (Levenshtein distance)
-    const calculateEditDistance = (str1: string, str2: string): number => {
-      const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
-      
-      for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
-      for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
-      
-      for (let j = 1; j <= str2.length; j++) {
-        for (let i = 1; i <= str1.length; i++) {
-          const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-          matrix[j][i] = Math.min(
-            matrix[j][i - 1] + 1,
-            matrix[j - 1][i] + 1,
-            matrix[j - 1][i - 1] + indicator
-          );
-        }
-      }
-      
-      return matrix[str2.length][str1.length];
-    };
-
-    // Semantic similarity (simple word overlap ratio)
-    const calculateSemanticSimilarity = (str1: string, str2: string): number => {
-      const words1 = new Set(str1.toLowerCase().split(/\s+/));
-      const words2 = new Set(str2.toLowerCase().split(/\s+/));
-      
-      const intersection = new Set([...words1].filter(x => words2.has(x)));
-      const union = new Set([...words1, ...words2]);
-      
-      return union.size > 0 ? intersection.size / union.size : 0;
-    };
-
-    const bleu1 = calculateBLEU(translation1, referenceTranslation);
-    const bleu2 = calculateBLEU(translation2, referenceTranslation);
-    
-    const rouge1 = calculateROUGE(translation1, referenceTranslation);
-    const rouge2 = calculateROUGE(translation2, referenceTranslation);
-    
-    const edit1 = calculateEditDistance(translation1, referenceTranslation);
-    const edit2 = calculateEditDistance(translation2, referenceTranslation);
-    
-    const semantic1 = calculateSemanticSimilarity(translation1, referenceTranslation);
-    const semantic2 = calculateSemanticSimilarity(translation2, referenceTranslation);
-
-    return {
-      model1: {
-        bleuScore: bleu1,
-        rougeScore: rouge1,
-        editDistance: edit1,
-        semanticSimilarity: semantic1
-      },
-      model2: {
-        bleuScore: bleu2,
-        rougeScore: rouge2,
-        editDistance: edit2,
-        semanticSimilarity: semantic2
-      }
-    };
+  const selectRandomScript = () => {
+    const scriptsForDifficulty = testScripts[selectedDifficulty];
+    const randomIndex = Math.floor(Math.random() * scriptsForDifficulty.length);
+    setCurrentScript(scriptsForDifficulty[randomIndex]);
+    setTranscriptionText('');
   };
-  // Helper function to extract translation data from any response type
-  const extractTranslationData = (comparison: AnyComparisonResponse, referenceTranslation?: string) => {
+
+  // Helper function to safely extract translation data
+  const extractTranslationData = (comparison: AnyComparisonResponse, referenceTranslation: string) => {
     let marianResult = '';
     let googleResult = '';
     let chatgptResult = '';
@@ -578,18 +541,26 @@ const TranslationTestPage: React.FC = () => {
   };
 
   // Helper function to get all available models
-  const getAllModels = (): ModelName[] => ['marian', 'google', 'chatgpt', 'm2m100', 'madlad'];
+  const getAllModels = (): ModelName[] => ['marian', 'google', 'm2m100', 'madlad'];
+
+  // Helper function to get available reference models (excluding selected models)
+  const getAvailableReferenceModels = (): ModelName[] => {
+    return getAllModels().filter(model => !selectedModels.includes(model));
+  };
+
+  // Update reference model when selected models change
+  useEffect(() => {
+    const availableReferenceModels = getAvailableReferenceModels();
+    if (availableReferenceModels.length > 0 && !availableReferenceModels.includes(referenceModel)) {
+      setReferenceModel(availableReferenceModels[0]);
+    }
+  }, [selectedModels, referenceModel]);
 
   // Helper function to get reference model
   const getReferenceModel = (): ModelName | undefined => {
-    return getAllModels().find(model => !selectedModels.includes(model));
+    return referenceModel;
   };
-    if (!currentScript || !transcriptionText) return;
 
-    setIsProcessing(true);
-    const startTime = Date.now();
-
-    try {
   const processAudioTest = async () => {
     if (!currentScript || !transcriptionText) return;
 
@@ -597,19 +568,13 @@ const TranslationTestPage: React.FC = () => {
     const startTime = Date.now();
 
     try {
-      // Get reference translation from unselected model
-      const allModels = getAllModels();
-      const unselectedModel = allModels.find(model => !selectedModels.includes(model));
+      // Get reference translation using the selected reference model
       let referenceTranslation = '';
-
-      // Get reference translation first if there's an unselected model
-      if (unselectedModel) {
-        try {
-          const referenceResponse = await EnhancedTranslationService.translateText(transcriptionText, selectedLanguage, unselectedModel);
-          referenceTranslation = referenceResponse;
-        } catch (error) {
-          console.warn('Failed to get reference translation:', error);
-        }
+      try {
+        const referenceResponse = await EnhancedTranslationService.translateText(transcriptionText, selectedLanguage, referenceModel);
+        referenceTranslation = referenceResponse;
+      } catch (error) {
+        console.warn('Failed to get reference translation:', error);
       }
       
       let comparison: AnyComparisonResponse;
@@ -674,19 +639,13 @@ const TranslationTestPage: React.FC = () => {
       setCurrentTest(test);
 
       try {
-        // Get reference translation from unselected model
-        const allModels = getAllModels();
-        const unselectedModel = allModels.find(model => !selectedModels.includes(model));
+        // Get reference translation using the selected reference model
         let referenceTranslation = '';
-
-        // Get reference translation first if there's an unselected model
-        if (unselectedModel) {
-          try {
-            const referenceResponse = await EnhancedTranslationService.translateText(test, selectedLanguage, unselectedModel);
-            referenceTranslation = referenceResponse;
-          } catch (error) {
-            console.warn('Failed to get reference translation:', error);
-          }
+        try {
+          const referenceResponse = await EnhancedTranslationService.translateText(test, selectedLanguage, referenceModel);
+          referenceTranslation = referenceResponse;
+        } catch (error) {
+          console.warn('Failed to get reference translation:', error);
         }
 
         let comparison: AnyComparisonResponse;
@@ -731,8 +690,18 @@ const TranslationTestPage: React.FC = () => {
     setCurrentTest('');
   };
 
-  // Calculate comprehensive statistics (moved before usage)
-  const calculateStats = () => {
+  // Calculate comprehensive statistics - Fixed with proper return type
+  const calculateStats = (): {
+    total: number;
+    textTests: number;
+    audioTests: number;
+    avgSelectedModelTimes: { [key: string]: number };
+    selectedModelSuccessRates: { [key: string]: string };
+    accuracyStats?: {
+      avgBLEUScores: { [key: string]: string };
+      avgROUGEScores: { [key: string]: string };
+    };
+  } | null => {
     if (testResults.length === 0) return null;
 
     // Helper function to get result by model
@@ -759,140 +728,106 @@ const TranslationTestPage: React.FC = () => {
       }
     };
 
-    return {
+    const stats = {
       // Overall metrics
       total: testResults.length,
       textTests: testResults.filter(r => r.type === 'text').length,
       audioTests: testResults.filter(r => r.type === 'audio').length,
       
       // Performance metrics for selected models only
-      avgSelectedModelTimes: selectedModels.reduce((acc, model) => {
+      avgSelectedModelTimes: selectedModels.reduce((acc: { [key: string]: number }, model) => {
         const validResults = testResults.filter(r => getTimeByModel(r, model) > 0);
         acc[model] = validResults.length > 0 
-          ? (validResults.reduce((sum, r) => sum + getTimeByModel(r, model), 0) / validResults.length).toFixed(2)
-          : 'N/A';
+          ? validResults.reduce((sum, r) => sum + getTimeByModel(r, model), 0) / validResults.length
+          : 0;
         return acc;
-      }, {} as Record<string, string>),
-      
-      // Success rates for selected models only
-      selectedModelSuccessRates: selectedModels.reduce((acc, model) => {
-        const successfulResults = testResults.filter(r => {
-          const result = getResultByModel(r, model);
-          return result && result !== 'Failed' && result !== '';
-        });
-        acc[model] = ((successfulResults.length / testResults.length) * 100).toFixed(1);
+      }, {}),
+
+      selectedModelSuccessRates: selectedModels.reduce((acc: { [key: string]: string }, model) => {
+        const successfulResults = testResults.filter(r => getResultByModel(r, model) !== '');
+        const rate = testResults.length > 0 ? (successfulResults.length / testResults.length) * 100 : 0;
+        acc[model] = rate.toFixed(1);
         return acc;
-      }, {} as Record<string, string>),
-      
-      // Performance comparisons between selected models
-      fasterSelectedModel: (() => {
-        if (selectedModels.length === 2) {
-          const model1Times = testResults.reduce((acc, r) => acc + getTimeByModel(r, selectedModels[0]), 0) / testResults.length;
-          const model2Times = testResults.reduce((acc, r) => acc + getTimeByModel(r, selectedModels[1]), 0) / testResults.length;
-          
-          const faster = model1Times <= model2Times ? selectedModels[0] : selectedModels[1];
-          return getModelDisplayName(faster);
-        }
-        return 'N/A';
+      }, {})
+    };
+
+    // Add accuracy stats if we have accuracy metrics
+    const resultsWithAccuracy = testResults.filter(r => r.accuracyMetrics);
+    if (resultsWithAccuracy.length > 0) {
+      const accuracyStats = {
+        avgBLEUScores: selectedModels.reduce((acc: { [key: string]: string }, model) => {
+          const scores = resultsWithAccuracy
+            .map(r => r.accuracyMetrics?.bleuScore?.[model])
+            .filter(score => score !== undefined) as number[];
+          const avgScore = scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
+          acc[model] = avgScore.toFixed(3);
+          return acc;
+        }, {}),
+
+        avgROUGEScores: selectedModels.reduce((acc: { [key: string]: string }, model) => {
+          const scores = resultsWithAccuracy
+            .map(r => r.accuracyMetrics?.rougeScore?.[model])
+            .filter(score => score !== undefined) as number[];
+          const avgScore = scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
+          acc[model] = avgScore.toFixed(3);
+          return acc;
+        }, {})
+      };
+
+      return { ...stats, accuracyStats };
+    }
+
+    return stats;
+  };
+
+  // Calculate performance summary for display
+  const getPerformanceSummary = () => {
+    if (selectedModels.length !== 2 || testResults.length === 0) {
+      return {
+        faster: 'N/A',
+        mostReliable: 'N/A',
+        bestBLEU: 'N/A',
+        bestROUGE: 'N/A'
+      };
+    }
+
+    const stats = calculateStats();
+    if (!stats) {
+      return {
+        faster: 'N/A',
+        mostReliable: 'N/A',
+        bestBLEU: 'N/A',
+        bestROUGE: 'N/A'
+      };
+    }
+
+    return {
+      faster: (() => {
+        const times = selectedModels.map(model => stats.avgSelectedModelTimes[model] || 0);
+        const faster = selectedModels[times[0] <= times[1] ? 0 : 1];
+        return getModelDisplayName(faster);
       })(),
-      
-      // Audio-specific metrics
-      avgTranscriptionAccuracy: testResults.filter(r => r.type === 'audio' && r.transcriptionAccuracy).length > 0
-        ? (testResults.filter(r => r.type === 'audio' && r.transcriptionAccuracy).reduce((acc, r) => acc + (r.transcriptionAccuracy || 0), 0) / testResults.filter(r => r.type === 'audio' && r.transcriptionAccuracy).length).toFixed(1)
-        : 'N/A',
-      avgTotalLatency: testResults.filter(r => r.type === 'audio' && r.totalLatency).length > 0
-        ? (testResults.filter(r => r.type === 'audio' && r.totalLatency).reduce((acc, r) => acc + (r.totalLatency || 0), 0) / testResults.filter(r => r.type === 'audio' && r.totalLatency).length).toFixed(2)
-        : 'N/A',
-      
-      // Language distribution
-      languageDistribution: testResults.reduce((acc, r) => {
-        acc[r.language] = (acc[r.language] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      
-      // Test type distribution by difficulty (for audio tests)
-      difficultyDistribution: testResults.filter(r => r.type === 'audio' && r.audioScript).reduce((acc, r) => {
-        const difficulty = r.audioScript?.difficulty || 'unknown';
-        acc[difficulty] = (acc[difficulty] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      
-      // BLEU/ROUGE statistics for tests with accuracy metrics
-      accuracyStats: testResults.filter(r => r.accuracyMetrics).length > 0 ? {
-        avgBLEUScores: selectedModels.reduce((acc, model) => {
-          const validResults = testResults.filter(r => r.accuracyMetrics?.bleuScore?.[model] !== undefined);
-          acc[model] = validResults.length > 0 
-            ? (validResults.reduce((sum, r) => sum + (r.accuracyMetrics?.bleuScore?.[model] || 0), 0) / validResults.length).toFixed(3)
-            : 'N/A';
-          return acc;
-        }, {} as Record<string, string>),
-        
-        avgROUGEScores: selectedModels.reduce((acc, model) => {
-          const validResults = testResults.filter(r => r.accuracyMetrics?.rougeScore?.[model] !== undefined);
-          acc[model] = validResults.length > 0 
-            ? (validResults.reduce((sum, r) => sum + (r.accuracyMetrics?.rougeScore?.[model] || 0), 0) / validResults.length).toFixed(3)
-            : 'N/A';
-          return acc;
-        }, {} as Record<string, string>),
-        
-        avgEditDistance: selectedModels.reduce((acc, model) => {
-          const validResults = testResults.filter(r => r.accuracyMetrics?.editDistance?.[model] !== undefined);
-          acc[model] = validResults.length > 0 
-            ? (validResults.reduce((sum, r) => sum + (r.accuracyMetrics?.editDistance?.[model] || 0), 0) / validResults.length).toFixed(1)
-            : 'N/A';
-          return acc;
-        }, {} as Record<string, string>),
-        
-        avgSemanticSimilarity: selectedModels.reduce((acc, model) => {
-          const validResults = testResults.filter(r => r.accuracyMetrics?.semanticSimilarity?.[model] !== undefined);
-          acc[model] = validResults.length > 0 
-            ? (validResults.reduce((sum, r) => sum + (r.accuracyMetrics?.semanticSimilarity?.[model] || 0), 0) / validResults.length).toFixed(3)
-            : 'N/A';
-          return acc;
-        }, {} as Record<string, string>),
-        
-        referenceModel: getReferenceModel()
-      } : null,
-      
-      // Model comparison insights for selected models
-      modelComparison: {
-        fastestOverall: (() => {
-          if (selectedModels.length === 2) {
-            const times = selectedModels.map(model => parseFloat(calculateStats()?.avgSelectedModelTimes?.[model] || '999'));
-            const faster = selectedModels[times[0] <= times[1] ? 0 : 1];
-            return getModelDisplayName(faster);
-          }
-          return 'N/A';
-        })(),
-        mostReliable: (() => {
-          if (selectedModels.length === 2) {
-            const rates = selectedModels.map(model => parseFloat(calculateStats()?.selectedModelSuccessRates?.[model] || '0'));
-            const moreReliable = selectedModels[rates[0] >= rates[1] ? 0 : 1];
-            return getModelDisplayName(moreReliable);
-          }
-          return 'N/A';
-        })(),
-        bestBLEU: testResults.filter(r => r.accuracyMetrics).length > 0 && selectedModels.length === 2 ? (() => {
-          const stats = calculateStats();
-          const scores = selectedModels.map(model => parseFloat(stats?.accuracyStats?.avgBLEUScores?.[model] || '0'));
-          const better = selectedModels[scores[0] >= scores[1] ? 0 : 1];
-          return getModelDisplayName(better);
-        })() : 'N/A',
-        bestROUGE: testResults.filter(r => r.accuracyMetrics).length > 0 && selectedModels.length === 2 ? (() => {
-          const stats = calculateStats();
-          const scores = selectedModels.map(model => parseFloat(stats?.accuracyStats?.avgROUGEScores?.[model] || '0'));
-          const better = selectedModels[scores[0] >= scores[1] ? 0 : 1];
-          return getModelDisplayName(better);
-        })() : 'N/A'
-      }
+      mostReliable: (() => {
+        const rates = selectedModels.map(model => parseFloat(stats.selectedModelSuccessRates[model] || '0'));
+        const moreReliable = selectedModels[rates[0] >= rates[1] ? 0 : 1];
+        return getModelDisplayName(moreReliable);
+      })(),
+      bestBLEU: stats.accuracyStats ? (() => {
+        const scores = selectedModels.map(model => parseFloat(stats.accuracyStats?.avgBLEUScores?.[model] || '0'));
+        const better = selectedModels[scores[0] >= scores[1] ? 0 : 1];
+        return getModelDisplayName(better);
+      })() : 'N/A',
+      bestROUGE: stats.accuracyStats ? (() => {
+        const scores = selectedModels.map(model => parseFloat(stats.accuracyStats?.avgROUGEScores?.[model] || '0'));
+        const better = selectedModels[scores[0] >= scores[1] ? 0 : 1];
+        return getModelDisplayName(better);
+      })() : 'N/A'
     };
   };
 
   const stats = calculateStats();
-
+  const performanceSummary = getPerformanceSummary();
   const currentTestSet = testSets[selectedTestSet as keyof typeof testSets];
-  const availableLanguages = new Set(languages.map(lang => lang.code));
-  const allTestSets = Object.entries(testSets).map(([key, set]) => ({ key, ...set }));
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -944,93 +879,106 @@ const TranslationTestPage: React.FC = () => {
         {/* Model Selection */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">Select Two Translation Models to Compare</label>
-          <div className="flex flex-wrap gap-2">
-            {(['marian', 'google', 'm2m100', 'madlad'] as ModelName[]).map(model => (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(['marian', 'google', 'm2m100', 'madlad'] as const).map(model => (
               <button
                 key={model}
                 onClick={() => {
                   setSelectedModels(prev => {
-                    if (prev.includes(model)) {
+                    if (prev.includes(model as ModelName)) {
                       // Remove model if already selected
                       return prev.filter(m => m !== model);
                     } else if (prev.length < 2) {
                       // Add model if less than 2 selected
-                      return [...prev, model];
+                      return [...prev, model as ModelName];
                     } else {
                       // Replace oldest model if 2 already selected
-                      return [prev[1], model];
+                      return [prev[1], model as ModelName];
                     }
                   });
                 }}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  selectedModels.includes(model)
+                  selectedModels.includes(model as ModelName)
                     ? 'bg-blue-100 text-blue-700 border-2 border-blue-200'
                     : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border-2 border-gray-200'
                 }`}
               >
-                {model === 'marian' ? 'MarianMT' : 
-                 model === 'google' ? 'Google Translate' : 
-                 model === 'm2m100' ? 'M2M-100 (Facebook)' :
-                 model === 'madlad' ? 'MADLAD-400 (Google)' : 'ChatGPT'}
+                {getModelDisplayName(model as ModelName)}
               </button>
             ))}
           </div>
-          <div className="mt-2 text-xs text-gray-500">
-            <div>Selected models: {selectedModels.length > 0 ? selectedModels.map(m => getModelDisplayName(m)).join(' vs ') : 'None'}</div>
-            {selectedModels.length === 2 && (
-              <div className="mt-1">
-                <span className="text-blue-600">
-                  Reference model for BLEU/ROUGE scores: {
-                    getReferenceModel() ? getModelDisplayName(getReferenceModel()!) : 'None'
-                  }
-                </span>
-              </div>
-            )}
+          
+          {/* Reference Model Selection */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <label className="block text-sm font-medium text-yellow-800 mb-2">
+              Reference Model for BLEU/ROUGE Scores
+            </label>
+            <select
+              value={referenceModel}
+              onChange={(e) => setReferenceModel(e.target.value as ModelName)}
+              className="w-full p-2 border border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-transparent bg-white"
+            >
+              {getAvailableReferenceModels().map(model => (
+                <option key={model} value={model}>
+                  {getModelDisplayName(model)} - Use as reference for accuracy metrics
+                </option>
+              ))}
+            </select>
+            <p className="text-sm text-yellow-700 mt-2">
+              The reference model's translation will be used as the "ground truth" to calculate BLEU and ROUGE scores for the two selected comparison models.
+            </p>
           </div>
+          
+          <p className="text-sm text-gray-500 mt-2">
+            Select exactly 2 models to compare. A third model will serve as the reference for accuracy metrics.
+          </p>
+        </div>
+
+        {/* Language Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Target Language</label>
+          <select
+            value={selectedLanguage}
+            onChange={(e) => setSelectedLanguage(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {languages.map(lang => (
+              <option key={lang.code} value={lang.code}>
+                {lang.flag} {lang.name} ({lang.native})
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Text Testing Interface */}
         {testingMode === 'text' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Target Language</label>
-                <select
-                  value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {languages.map(lang => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.flag} {lang.name} ({lang.native})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Test Set</label>
-                <select
-                  value={selectedTestSet}
-                  onChange={(e) => setSelectedTestSet(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {Object.entries(testSets).map(([key, set]) => (
-                    <option key={key} value={key}>{set.name} ({set.tests.length} tests)</option>
-                  ))}
-                </select>
-              </div>
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Text Translation Testing</h2>
+              <p className="text-gray-600">Automated testing with pre-defined test sets</p>
             </div>
 
-            {/* Test Set Preview */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Test Set</label>
+              <select
+                value={selectedTestSet}
+                onChange={(e) => setSelectedTestSet(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {Object.entries(testSets).map(([key, set]) => (
+                  <option key={key} value={key}>{set.name}</option>
+                ))}
+              </select>
+              <p className="text-sm text-gray-500 mt-1">{currentTestSet.description}</p>
+            </div>
+
             {currentTestSet && (
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-800 mb-2">{currentTestSet.name}</h3>
-                <p className="text-sm text-gray-600 mb-3">Category: {currentTestSet.category}</p>
-                <div className="space-y-2">
+              <div className="bg-gray-50 rounded-md p-4">
+                <h3 className="font-medium text-gray-800 mb-2">Test Samples ({currentTestSet.tests.length} tests):</h3>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
                   {currentTestSet.tests.slice(0, 2).map((test, index) => (
-                    <div key={index} className="text-sm text-gray-700 italic">
-                      "{test.substring(0, 100)}{test.length > 100 ? '...' : ''}"
+                    <div key={index} className="text-sm text-gray-600 bg-white p-2 rounded border">
+                      "{test.length > 100 ? test.substring(0, 100) + '...' : test}"
                     </div>
                   ))}
                   {currentTestSet.tests.length > 2 && (
@@ -1043,10 +991,13 @@ const TranslationTestPage: React.FC = () => {
                 <div className="flex justify-center mt-4">
                   <button
                     onClick={runTextTests}
-                    disabled={isRunningTests || !isServiceOnline || selectedModels.length !== 2}
+                    disabled={isRunningTests || !isServiceOnline || selectedModels.length !== 2 || getAvailableReferenceModels().length === 0}
                     className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-semibold disabled:bg-gray-300"
                   >
-                    {isRunningTests ? 'Running Tests...' : selectedModels.length !== 2 ? 'Select 2 Models' : `Run ${currentTestSet.name}`}
+                    {isRunningTests ? 'Running Tests...' : 
+                     selectedModels.length !== 2 ? 'Select 2 Models' : 
+                     getAvailableReferenceModels().length === 0 ? 'Need Reference Model' :
+                     `Run ${currentTestSet.name}`}
                   </button>
                 </div>
               </div>
@@ -1079,7 +1030,7 @@ const TranslationTestPage: React.FC = () => {
                 <select
                   value={selectedLanguage}
                   onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {languages.map(lang => (
                     <option key={lang.code} value={lang.code}>
@@ -1088,389 +1039,168 @@ const TranslationTestPage: React.FC = () => {
                   ))}
                 </select>
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Script Difficulty</label>
                 <select
                   value={selectedDifficulty}
                   onChange={(e) => setSelectedDifficulty(e.target.value as 'easy' | 'medium' | 'hard')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 >
-                  <option value="easy">Easy (Basic vocabulary)</option>
-                  <option value="medium">Medium (Cultural terms)</option>
-                  <option value="hard">Hard (Technical/Academic)</option>
+                  <option value="easy">Easy - Basic vocabulary</option>
+                  <option value="medium">Medium - Technical terms</option>
+                  <option value="hard">Hard - Academic language</option>
                 </select>
               </div>
-
               <div className="flex items-end">
                 <button
-                  onClick={generateRandomScript}
-                  className="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium"
+                  onClick={selectRandomScript}
+                  className="w-full px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-md font-medium"
                 >
-                  🎲 Generate Script
+                  Get Random Script
                 </button>
               </div>
             </div>
 
-            {/* Current Script Display */}
             {currentScript && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-semibold text-gray-800">Read This Script:</h3>
-                  <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded">
-                    {currentScript.difficulty.toUpperCase()}
+              <div className="bg-purple-50 rounded-md p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="font-semibold text-purple-800">Test Script ({currentScript.difficulty})</h3>
+                  <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded">
+                    {currentScript.id}
                   </span>
                 </div>
-                <div className="text-lg text-gray-900 mb-2 leading-relaxed">
-                  "{currentScript.text}"
+                <div className="bg-white p-3 rounded border">
+                  <p className="text-gray-800 italic">"{currentScript.text}"</p>
+                  <p className="text-sm text-gray-600 mt-2">Context: {currentScript.context}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Keywords: {currentScript.keywords.join(', ')}
+                  </p>
                 </div>
-                <div className="text-sm text-gray-600">
-                  <strong>Context:</strong> {currentScript.context}
+
+                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    disabled={!isServiceOnline || selectedModels.length !== 2 || getAvailableReferenceModels().length === 0}
+                    className={`flex-1 px-4 py-3 rounded-md font-semibold flex items-center justify-center ${
+                      isRecording
+                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                        : 'bg-green-500 hover:bg-green-600 text-white disabled:bg-gray-300'
+                    }`}
+                  >
+                    {isRecording ? '🔴 Stop Recording' : '🎙️ Start Recording'}
+                  </button>
+
+                  {transcriptionText && (
+                    <button
+                      onClick={processAudioTest}
+                      disabled={isProcessing || !transcriptionText}
+                      className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-md font-semibold disabled:bg-gray-300"
+                    >
+                      {isProcessing ? 'Processing...' : 'Test Translation'}
+                    </button>
+                  )}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  <strong>Keywords:</strong> {currentScript.keywords.join(', ')}
-                </div>
+
+                {transcriptionText && (
+                  <div className="mt-3 p-3 bg-white rounded border">
+                    <h4 className="font-medium text-gray-700 mb-1">Live Transcription:</h4>
+                    <p className="text-gray-800 italic">"{transcriptionText}"</p>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Recording Controls */}
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={isRecording ? stopRecording : startRecording}
-                disabled={!currentScript || selectedModels.length !== 2}
-                className={`px-6 py-3 rounded-full font-semibold disabled:bg-gray-300 ${
-                  isRecording 
-                    ? 'bg-red-500 hover:bg-red-600 text-white'
-                    : 'bg-purple-500 hover:bg-purple-600 text-white'
-                }`}
-              >
-                {selectedModels.length !== 2 ? 'Select 2 Models' : 
-                 isRecording ? '🛑 Stop Recording' : '🎙️ Start Recording'}
-              </button>
-
-              {transcriptionText && (
-                <button
-                  onClick={processAudioTest}
-                  disabled={isProcessing}
-                  className="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-full font-semibold disabled:bg-gray-300"
-                >
-                  {isProcessing ? '⏳ Processing...' : '🔄 Process & Translate'}
-                </button>
-              )}
-            </div>
-
-            {/* Transcription Display */}
-            {transcriptionText && (
-              <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-                <h4 className="font-semibold text-gray-700 mb-2">Live Transcription:</h4>
-                <div className="text-gray-900 italic">"{transcriptionText}"</div>
-              </div>
-            )}
-
-            {/* Utility Buttons */}
-            <div className="flex justify-center space-x-4">
+            <div className="text-center">
               <button
                 onClick={downloadTestScripts}
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md"
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md text-sm"
               >
-                📥 Download All Scripts
+                📥 Download All Test Scripts
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Comprehensive Testing Statistics */}
-      {stats && (
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Comprehensive Testing Statistics</h2>
-          <div className="text-sm text-gray-600 mb-4">
-            Analyzing comparison between: {selectedModels.map(m => 
-              m === 'marian' ? 'MarianMT' : m === 'google' ? 'Google Translate' : 'ChatGPT'
-            ).join(' vs ')}
-            {stats.accuracyStats?.referenceModel && (
-              <span className="ml-2 text-blue-600">
-                | Reference: {stats.accuracyStats.referenceModel === 'marian' ? 'MarianMT' : 
-                            stats.accuracyStats.referenceModel === 'google' ? 'Google Translate' : 'ChatGPT'}
-              </span>
-            )}
-          </div>
+      {/* Statistics Dashboard */}
+      {stats && testResults.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">Performance Dashboard</h3>
           
-          {/* Overall Performance */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Overall Performance</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-indigo-50 rounded-lg">
-                <div className="text-2xl font-bold text-indigo-600">{stats.total}</div>
-                <div className="text-sm text-gray-600">Total Tests</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+              <div className="text-sm text-blue-700">Total Tests</div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{stats.textTests}</div>
+              <div className="text-sm text-green-700">Text Tests</div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">{stats.audioTests}</div>
+              <div className="text-sm text-purple-700">Audio Tests</div>
+            </div>
+            <div className="bg-orange-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-orange-600">
+                {selectedModels.length === 2 ? '2' : selectedModels.length}
               </div>
-              <div className="text-center p-3 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{stats.textTests}</div>
-                <div className="text-sm text-gray-600">Text Tests</div>
-              </div>
-              <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">{stats.audioTests}</div>
-                <div className="text-sm text-gray-600">Audio Tests</div>
-              </div>
-              <div className="text-center p-3 bg-gray-50 rounded-lg">
-                <div className="text-lg font-bold text-gray-600">{stats.fasterSelectedModel}</div>
-                <div className="text-sm text-gray-600">Faster Model</div>
-              </div>
+              <div className="text-sm text-orange-700">Models Compared</div>
             </div>
           </div>
 
-          {/* Translation Speed Performance - Selected Models */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Translation Speed Performance</h3>
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${selectedModels.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4`}>
-              {selectedModels.map((model, index) => {
-                const colorClasses = [
-                  'bg-blue-50 text-blue-600',
-                  'bg-green-50 text-green-600',
-                  'bg-orange-50 text-orange-600'
-                ];
-                const modelName = model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google Translate' : 'ChatGPT';
-                
-                return (
-                  <div key={model} className={`text-center p-3 rounded-lg ${colorClasses[index] || 'bg-gray-50 text-gray-600'}`}>
-                    <div className="text-2xl font-bold">{stats.avgSelectedModelTimes[model]}s</div>
-                    <div className="text-sm text-gray-600">Avg {modelName} Time</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Success Rates - Selected Models */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Model Success Rates</h3>
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${selectedModels.length === 2 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
-              {selectedModels.map((model, index) => {
-                const colorClasses = [
-                  'bg-blue-50 text-blue-600',
-                  'bg-green-50 text-green-600',
-                  'bg-orange-50 text-orange-600'
-                ];
-                const modelName = model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google Translate' : 'ChatGPT';
-                
-                return (
-                  <div key={model} className={`text-center p-3 rounded-lg ${colorClasses[index] || 'bg-gray-50 text-gray-600'}`}>
-                    <div className="text-2xl font-bold">{stats.selectedModelSuccessRates[model]}%</div>
-                    <div className="text-sm text-gray-600">{modelName} Success</div>
-                  </div>
-                );
-              })}
-              <div className="text-center p-3 bg-gray-50 rounded-lg">
-                <div className="text-lg font-bold text-gray-600">{stats.modelComparison.mostReliable}</div>
-                <div className="text-sm text-gray-600">Most Reliable</div>
-              </div>
-            </div>
-          </div>
-
-          {/* BLEU/ROUGE Accuracy Metrics */}
-          {stats.accuracyStats && (
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Translation Accuracy vs Reference</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* BLEU Scores */}
-                <div className="bg-cyan-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-cyan-800 mb-2">BLEU Scores</h4>
-                  {selectedModels.map(model => {
-                    const modelName = model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT';
-                    return (
-                      <div key={model} className="text-sm">
-                        <span className="font-medium">{modelName}:</span> {stats.accuracyStats?.avgBLEUScores[model]}
-                      </div>
-                    );
-                  })}
-                  <div className="text-xs text-cyan-600 mt-1 font-semibold">
-                    Best: {stats.modelComparison.bestBLEU}
-                  </div>
-                </div>
-
-                {/* ROUGE Scores */}
-                <div className="bg-emerald-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-emerald-800 mb-2">ROUGE Scores</h4>
-                  {selectedModels.map(model => {
-                    const modelName = model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT';
-                    return (
-                      <div key={model} className="text-sm">
-                        <span className="font-medium">{modelName}:</span> {stats.accuracyStats?.avgROUGEScores[model]}
-                      </div>
-                    );
-                  })}
-                  <div className="text-xs text-emerald-600 mt-1 font-semibold">
-                    Best: {stats.modelComparison.bestROUGE}
-                  </div>
-                </div>
-
-                {/* Edit Distance */}
-                <div className="bg-amber-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-amber-800 mb-2">Avg Edit Distance</h4>
-                  {selectedModels.map(model => {
-                    const modelName = model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT';
-                    return (
-                      <div key={model} className="text-sm">
-                        <span className="font-medium">{modelName}:</span> {stats.accuracyStats?.avgEditDistance[model]}
-                      </div>
-                    );
-                  })}
-                  <div className="text-xs text-amber-600 mt-1">
-                    (Lower is better)
-                  </div>
-                </div>
-
-                {/* Semantic Similarity */}
-                <div className="bg-rose-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-rose-800 mb-2">Semantic Similarity</h4>
-                  {selectedModels.map(model => {
-                    const modelName = model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT';
-                    return (
-                      <div key={model} className="text-sm">
-                        <span className="font-medium">{modelName}:</span> {stats.accuracyStats?.avgSemanticSimilarity[model]}
-                      </div>
-                    );
-                  })}
-                  <div className="text-xs text-rose-600 mt-1">
-                    (Higher is better)
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Audio-Specific Metrics */}
-          {stats.audioTests > 0 && (
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Audio Pipeline Performance</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="text-center p-3 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">{stats.avgTranscriptionAccuracy}%</div>
-                  <div className="text-sm text-gray-600">Avg Transcription Accuracy</div>
-                </div>
-                <div className="text-center p-3 bg-indigo-50 rounded-lg">
-                  <div className="text-2xl font-bold text-indigo-600">{stats.avgTotalLatency}s</div>
-                  <div className="text-sm text-gray-600">Avg Total Pipeline Latency</div>
-                </div>
-                <div className="text-center p-3 bg-cyan-50 rounded-lg">
-                  <div className="text-2xl font-bold text-cyan-600">{Object.keys(stats.difficultyDistribution).length}</div>
-                  <div className="text-sm text-gray-600">Difficulty Levels Tested</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Test Analysis */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Test Analysis</h3>
+          {selectedModels.length === 2 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Language Distribution */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-700 mb-3">Languages Tested</h4>
+              {/* Performance Metrics */}
+              <div>
+                <h4 className="font-semibold text-gray-800 mb-3">Speed & Reliability</h4>
                 <div className="space-y-2">
-                  {Object.entries(stats.languageDistribution).map(([lang, count]) => (
-                    <div key={lang} className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600 capitalize">{lang}</span>
-                      <span className="text-sm font-medium text-gray-800">{count} tests</span>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Faster Model:</span>
+                    <span className="font-medium">{performanceSummary.faster}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">More Reliable:</span>
+                    <span className="font-medium">{performanceSummary.mostReliable}</span>
+                  </div>
+                  {selectedModels.map(model => (
+                    <div key={model} className="flex justify-between text-sm">
+                      <span className="text-gray-500">{getModelDisplayName(model)} avg time:</span>
+                      <span>{stats.avgSelectedModelTimes[model]?.toFixed(2) || 'N/A'}s</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Model Comparison Summary */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-700 mb-3">Model Comparison Summary</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Fastest Model:</span>
-                    <span className="font-medium text-gray-800">{stats.modelComparison.fastestOverall}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Most Reliable:</span>
-                    <span className="font-medium text-gray-800">{stats.modelComparison.mostReliable}</span>
-                  </div>
-                  {stats.accuracyStats && (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Best BLEU Score:</span>
-                        <span className="font-medium text-gray-800">{stats.modelComparison.bestBLEU}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Best ROUGE Score:</span>
-                        <span className="font-medium text-gray-800">{stats.modelComparison.bestROUGE}</span>
-                      </div>
-                      <div className="mt-3 pt-2 border-t border-gray-200">
-                        <span className="text-gray-600 text-xs">
-                          Reference Model: {stats.accuracyStats.referenceModel === 'marian' ? 'MarianMT' : 
-                                          stats.accuracyStats.referenceModel === 'google' ? 'Google Translate' : 'ChatGPT'}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Difficulty Distribution (Audio Tests) */}
-              {Object.keys(stats.difficultyDistribution).length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-semibold text-gray-700 mb-3">Audio Test Difficulty</h4>
+              {/* Accuracy Metrics */}
+              {stats.accuracyStats && (
+                <div>
+                  <h4 className="font-semibold text-gray-800 mb-3">Translation Quality</h4>
                   <div className="space-y-2">
-                    {Object.entries(stats.difficultyDistribution).map(([difficulty, count]) => (
-                      <div key={difficulty} className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600 capitalize">{difficulty}</span>
-                        <span className="text-sm font-medium text-gray-800">{count} tests</span>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Best BLEU Score:</span>
+                      <span className="font-medium">{performanceSummary.bestBLEU}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Best ROUGE Score:</span>
+                      <span className="font-medium">{performanceSummary.bestROUGE}</span>
+                    </div>
+                    {selectedModels.map(model => (
+                      <div key={model} className="text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">{getModelDisplayName(model)} BLEU:</span>
+                          <span>{stats.accuracyStats?.avgBLEUScores[model] || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">{getModelDisplayName(model)} ROUGE:</span>
+                          <span>{stats.accuracyStats?.avgROUGEScores[model] || 'N/A'}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Performance Insights */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Performance Insights</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Speed Analysis</h4>
-                <p className="text-sm text-gray-600">
-                  <strong>{stats.modelComparison.fastestOverall}</strong> consistently outperforms with an average response time of{' '}
-                  {selectedModels.length === 2 ? 
-                    Object.entries(stats.avgSelectedModelTimes).find(([model]) => 
-                      (model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google Translate' : 'ChatGPT') === stats.modelComparison.fastestOverall
-                    )?.[1] : 'N/A'}s
-                </p>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Reliability Analysis</h4>
-                <p className="text-sm text-gray-600">
-                  <strong>{stats.modelComparison.mostReliable}</strong> maintains the highest success rate at{' '}
-                  {selectedModels.length === 2 ? 
-                    Object.entries(stats.selectedModelSuccessRates).find(([model]) => 
-                      (model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google Translate' : 'ChatGPT') === stats.modelComparison.mostReliable
-                    )?.[1] : 'N/A'}%
-                </p>
-              </div>
-              {stats.accuracyStats && (
-                <>
-                  <div>
-                    <h4 className="font-medium text-gray-700 mb-2">BLEU Accuracy</h4>
-                    <p className="text-sm text-gray-600">
-                      <strong>{stats.modelComparison.bestBLEU}</strong> achieves superior precision with the highest BLEU score against{' '}
-                      {stats.accuracyStats.referenceModel === 'marian' ? 'MarianMT' : 
-                       stats.accuracyStats.referenceModel === 'google' ? 'Google Translate' : 'ChatGPT'} reference
-                    </p>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-700 mb-2">ROUGE Recall</h4>
-                    <p className="text-sm text-gray-600">
-                      <strong>{stats.modelComparison.bestROUGE}</strong> demonstrates better recall performance with the highest ROUGE score
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1478,30 +1208,18 @@ const TranslationTestPage: React.FC = () => {
       {testResults.length > 0 && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Test Results ({testResults.length})</h2>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setShowAccuracyMetrics(!showAccuracyMetrics)}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                {showAccuracyMetrics ? 'Hide' : 'Show'} Accuracy Metrics
-              </button>
-              <button
-                onClick={() => setTestResults([])}
-                className="text-sm text-red-600 hover:text-red-800"
-              >
-                Clear All
-              </button>
-            </div>
+            <h3 className="text-xl font-semibold text-gray-900">Test Results ({testResults.length})</h3>
+            <button
+              onClick={() => setShowAccuracyMetrics(!showAccuracyMetrics)}
+              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md"
+            >
+              {showAccuracyMetrics ? 'Hide' : 'Show'} Accuracy Metrics
+            </button>
           </div>
 
           <div className="space-y-4 max-h-96 overflow-y-auto">
             {testResults.map((result) => (
-              <div key={result.id} className={`border rounded-lg p-4 ${
-                result.type === 'text' 
-                  ? 'border-blue-200 bg-blue-50' : 'border-purple-200 bg-purple-50'
-              }`}>
-                {/* Test Header */}
+              <div key={result.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center space-x-2">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -1556,66 +1274,57 @@ const TranslationTestPage: React.FC = () => {
                 )}
 
                 {/* Translation Results - Only show selected models */}
-                <div className={`grid grid-cols-1 ${selectedModels.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4`}>
-                  {selectedModels.includes('marian') && (
-                    <div className="bg-white p-3 rounded border">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-semibold text-blue-600">MarianMT</h4>
-                        <span className="text-xs text-gray-500">{result.marianTime.toFixed(2)}s</span>
-                      </div>
-                      <div className="text-sm text-gray-800">"{result.marianResult}"</div>
-                    </div>
-                  )}
+                <div className={`grid grid-cols-1 ${selectedModels.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-4`}>
+                  {selectedModels.map(model => {
+                    const translation = (() => {
+                      switch (model) {
+                        case 'marian': return result.marianResult;
+                        case 'google': return result.googleResult;
+                        case 'chatgpt': return result.chatgptResult;
+                        case 'm2m100': return result.m2m100Result;
+                        case 'madlad': return result.madladResult;
+                        default: return '';
+                      }
+                    })();
 
-                  {selectedModels.includes('google') && (
-                    <div className="bg-white p-3 rounded border">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-semibold text-green-600">Google Translate</h4>
-                        <span className="text-xs text-gray-500">{result.googleTime.toFixed(2)}s</span>
-                      </div>
-                      <div className="text-sm text-gray-800">"{result.googleResult}"</div>
-                    </div>
-                  )}
+                    const time = (() => {
+                      switch (model) {
+                        case 'marian': return result.marianTime;
+                        case 'google': return result.googleTime;
+                        case 'chatgpt': return result.chatgptTime;
+                        case 'm2m100': return result.m2m100Time;
+                        case 'madlad': return result.madladTime;
+                        default: return 0;
+                      }
+                    })();
 
-                  {selectedModels.includes('chatgpt') && result.chatgptResult && (
-                    <div className="bg-white p-3 rounded border">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-semibold text-orange-600">ChatGPT</h4>
-                        <span className="text-xs text-gray-500">
-                          {result.chatgptTime ? `${result.chatgptTime.toFixed(2)}s` : 'N/A'}
-                        </span>
+                    return (
+                      <div key={model} className="bg-gray-50 p-3 rounded border">
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="font-semibold text-gray-800">{getModelDisplayName(model)}</h4>
+                          <span className="text-xs text-gray-500">{time}ms</span>
+                        </div>
+                        <div className="text-sm text-gray-700">
+                          {translation || 'No translation available'}
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-800">"{result.chatgptResult}"</div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
-
-                {/* Reference Translation Display */}
-                {result.accuracyMetrics && (
-                  <div className="mt-4">
-                    <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
-                      <h4 className="font-semibold text-yellow-800 mb-2">📚 Reference Translation (for BLEU/ROUGE scores)</h4>
-                      <div className="text-sm text-gray-800 italic">"{result.accuracyMetrics.referenceTranslation}"</div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        Generated by: {(['marian', 'google', 'chatgpt'] as ModelName[])
-                          .find(model => !selectedModels.includes(model)) === 'marian' ? 'MarianMT' :
-                        (['marian', 'google', 'chatgpt'] as ModelName[])
-                          .find(model => !selectedModels.includes(model)) === 'google' ? 'Google Translate' : 'ChatGPT'}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Accuracy Metrics */}
                 {showAccuracyMetrics && result.accuracyMetrics && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h4 className="font-semibold text-gray-800 mb-2">📊 Accuracy Metrics (vs Reference Translation)</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="mt-4 bg-yellow-50 p-3 rounded border">
+                    <h4 className="font-semibold text-yellow-800 mb-2">📊 Accuracy Metrics</h4>
+                    <div className="text-xs text-gray-600 mb-2">
+                      Reference ({getModelDisplayName(referenceModel)}): "{result.accuracyMetrics.referenceTranslation}"
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                       <div>
                         <div className="font-medium text-gray-600">BLEU Score</div>
                         {selectedModels.map(model => (
                           <div key={model}>
-                            {model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT'}: {
+                            {getModelDisplayName(model)}: {
                               result.accuracyMetrics?.bleuScore?.[model]?.toFixed(3) || 'N/A'
                             }
                           </div>
@@ -1625,7 +1334,7 @@ const TranslationTestPage: React.FC = () => {
                         <div className="font-medium text-gray-600">ROUGE Score</div>
                         {selectedModels.map(model => (
                           <div key={model}>
-                            {model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT'}: {
+                            {getModelDisplayName(model)}: {
                               result.accuracyMetrics?.rougeScore?.[model]?.toFixed(3) || 'N/A'
                             }
                           </div>
@@ -1635,7 +1344,7 @@ const TranslationTestPage: React.FC = () => {
                         <div className="font-medium text-gray-600">Edit Distance</div>
                         {selectedModels.map(model => (
                           <div key={model}>
-                            {model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT'}: {
+                            {getModelDisplayName(model)}: {
                               result.accuracyMetrics?.editDistance?.[model] || 'N/A'
                             }
                           </div>
@@ -1645,7 +1354,7 @@ const TranslationTestPage: React.FC = () => {
                         <div className="font-medium text-gray-600">Semantic Similarity</div>
                         {selectedModels.map(model => (
                           <div key={model}>
-                            {model === 'marian' ? 'MarianMT' : model === 'google' ? 'Google' : 'ChatGPT'}: {
+                            {getModelDisplayName(model)}: {
                               result.accuracyMetrics?.semanticSimilarity?.[model]?.toFixed(3) || 'N/A'
                             }
                           </div>
@@ -1678,8 +1387,8 @@ const TranslationTestPage: React.FC = () => {
               <div>Industry-standard metrics measuring translation precision and recall. Higher scores indicate better accuracy.</div>
             </div>
             <div>
-              <div className="font-medium text-orange-600 mb-1">Three-Model Analysis</div>
-              <div>Comprehensive comparison across MarianMT, Google Translate, and ChatGPT for optimal model selection.</div>
+              <div className="font-medium text-orange-600 mb-1">Reference Model Selection</div>
+              <div>Choose which model's translation to use as the reference for calculating BLEU/ROUGE accuracy scores for the two comparison models.</div>
             </div>
           </div>
         </div>

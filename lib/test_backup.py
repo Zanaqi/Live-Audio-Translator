@@ -45,9 +45,7 @@ class TranslationService:
         self.madlad_tokenizer = None
         self.google_translator = None
         
-        # Language mappings
         self.marian_lang_codes = {
-            'malay': 'ms',
             'chinese': 'zh',
             'tamil': 'ta',
             'french': 'fr',
@@ -58,7 +56,6 @@ class TranslationService:
         }
         
         self.m2m100_lang_codes = {
-            'malay': 'ms',
             'chinese': 'zh',
             'tamil': 'ta',
             'french': 'fr',
@@ -70,7 +67,6 @@ class TranslationService:
         }
         
         self.madlad_lang_codes = {
-            'malay': 'ms',
             'chinese': 'zh',
             'tamil': 'ta',
             'french': 'fr',
@@ -88,7 +84,6 @@ class TranslationService:
     def get_marian_model_name(self, target_language: str) -> str:
         """Get the appropriate MarianMT model name for the target language"""
         marian_models = {
-            'malay': 'Helsinki-NLP/opus-mt-en-ms',
             'chinese': 'Helsinki-NLP/opus-mt-en-zh',
             'tamil': 'Helsinki-NLP/opus-mt-en-ta', 
             'french': 'Helsinki-NLP/opus-mt-en-fr',
@@ -383,9 +378,7 @@ class TranslationService:
         try:
             self.load_google_translator()
             
-            # Language code mapping
             lang_codes = {
-                'malay': 'ms',
                 'chinese': 'zh',
                 'tamil': 'ta',
                 'french': 'fr',
@@ -455,7 +448,7 @@ def translate_marian():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         
         if not text:
             return jsonify({
@@ -490,7 +483,7 @@ def translate_m2m100():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         
         if not text:
             return jsonify({
@@ -525,7 +518,7 @@ def translate_madlad():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         
         if not text:
             return jsonify({
@@ -560,7 +553,7 @@ def translate_google():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         
         if not text:
             return jsonify({
@@ -595,7 +588,7 @@ def compare_two_models():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         
         if not text:
             return jsonify({
@@ -642,7 +635,7 @@ def compare_three_models():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         
         if not text:
             return jsonify({
@@ -697,7 +690,7 @@ def compare_custom_models():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'malay')
+        target_language = data.get('targetLanguage', 'french')
         models = data.get('models', ['marian', 'm2m100'])
         
         if not text:

@@ -45,4 +45,6 @@ next-env.d.ts
 # scripts for the datasets
 /scripts
 
+/model_cache
+
 .vscode

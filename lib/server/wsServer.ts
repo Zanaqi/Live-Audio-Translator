@@ -1,4 +1,4 @@
-import WebSocket from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import fetch from "node-fetch";
 import { ContextManager } from "./utils/ContextManager";
 import { TranslationAdapter } from "./utils/TranslationAdapter";
@@ -31,7 +31,7 @@ interface TranslationResult {
 }
 
 const WS_PORT = 3002;
-const wss = new WebSocket.Server({ port: WS_PORT });
+const wss = new WebSocketServer({ port: WS_PORT });
 
 // Store active rooms, context managers, and translation adapters
 const rooms = new Map<string, Map<string, ParticipantInfo>>();
