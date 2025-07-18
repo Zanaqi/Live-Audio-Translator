@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { EnhancedTranslationService } from '../../lib/services/EnhancedTranslationService';
 
-type ModelName = 'marian' | 'google' | 'chatgpt' | 'm2m100';
+type ModelName = 'marian' | 'google' | 'm2m100';
 
 interface TestResult {
   id: string;
@@ -9,11 +9,9 @@ interface TestResult {
   targetLanguage: string;
   marianResult: string;
   googleResult: string;
-  chatgptResult?: string;
   m2m100Result?: string;
   marianTime: number;
   googleTime: number;
-  chatgptTime?: number;
   m2m100Time?: number;
   timestamp: Date;
   accuracyMetrics?: AccuracyMetrics;
@@ -201,11 +199,9 @@ const TranslationTestPage: React.FC = () => {
         targetLanguage: selectedLanguage,
         marianResult: result.results.marian?.translation || 'Failed',
         googleResult: result.results.google?.translation || 'Failed',
-        chatgptResult: result.results.chatgpt?.translation,
         m2m100Result: result.results.m2m100?.translation,
         marianTime: result.results.marian?.latency || 0,
         googleTime: result.results.google?.latency || 0,
-        chatgptTime: result.results.chatgpt?.latency,
         m2m100Time: result.results.m2m100?.latency,
         timestamp: new Date(),
         fullComparison: result
@@ -239,11 +235,9 @@ const TranslationTestPage: React.FC = () => {
           targetLanguage: selectedLanguage,
           marianResult: result.results.marian?.translation || 'Failed',
           googleResult: result.results.google?.translation || 'Failed',
-          chatgptResult: result.results.chatgpt?.translation,
           m2m100Result: result.results.m2m100?.translation,
           marianTime: result.results.marian?.latency || 0,
           googleTime: result.results.google?.latency || 0,
-          chatgptTime: result.results.chatgpt?.latency,
           m2m100Time: result.results.m2m100?.latency,
           timestamp: new Date(),
           fullComparison: result
@@ -355,11 +349,9 @@ const TranslationTestPage: React.FC = () => {
         targetLanguage: selectedLanguage,
         marianResult: result.results.marian?.translation || 'Failed',
         googleResult: result.results.google?.translation || 'Failed',
-        chatgptResult: result.results.chatgpt?.translation,
         m2m100Result: result.results.m2m100?.translation,
         marianTime: result.results.marian?.latency || 0,
         googleTime: result.results.google?.latency || 0,
-        chatgptTime: result.results.chatgpt?.latency,
         m2m100Time: result.results.m2m100?.latency,
         timestamp: new Date(),
         transcribedText: transcriptionText,
@@ -402,7 +394,6 @@ const TranslationTestPage: React.FC = () => {
     const displayNames = {
       marian: 'MarianMT',
       google: 'Google',
-      chatgpt: 'ChatGPT',
       m2m100: 'M2M-100'
     };
     return displayNames[model];
@@ -459,7 +450,7 @@ const TranslationTestPage: React.FC = () => {
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">Select Two Translation Models to Compare</label>
         <div className="flex flex-wrap gap-2 mb-4">
-          {(['marian', 'google', 'm2m100', 'chatgpt'] as const).map(model => (
+          {(['marian', 'google', 'm2m100'] as const).map(model => (
             <button
               key={model}
               onClick={() => {
@@ -718,13 +709,6 @@ const TranslationTestPage: React.FC = () => {
                       <div className="p-3 bg-yellow-50 rounded">
                         <p className="text-sm font-medium text-yellow-700">M2M-100 ({formatLatency(result.m2m100Time || 0)}):</p>
                         <p className="text-yellow-900">{result.m2m100Result}</p>
-                      </div>
-                    )}
-                    
-                    {selectedModels.includes('chatgpt') && result.chatgptResult && (
-                      <div className="p-3 bg-purple-50 rounded">
-                        <p className="text-sm font-medium text-purple-700">ChatGPT ({formatLatency(result.chatgptTime || 0)}):</p>
-                        <p className="text-purple-900">{result.chatgptResult}</p>
                       </div>
                     )}
                   </div>

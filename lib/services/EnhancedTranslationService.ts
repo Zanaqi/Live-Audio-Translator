@@ -86,7 +86,7 @@ interface ModelSetPerformanceAnalysis {
   };
 }
 
-type ModelName = 'marian' | 'google' | 'chatgpt' | 'm2m100';
+type ModelName = 'marian' | 'google' | 'm2m100';
 type ModelSet = ModelName[];
 
 export class EnhancedTranslationService {
@@ -113,10 +113,6 @@ export class EnhancedTranslationService {
         case 'google':
           endpoint = "/translate";
           requestModel = 'google';
-          break;
-        case 'chatgpt':
-          endpoint = "/translate-chatgpt";
-          requestModel = 'chatgpt';
           break;
         case 'm2m100':
           endpoint = "/translate-m2m100";
@@ -494,7 +490,7 @@ export class EnhancedTranslationService {
     const modelPairs: string[] = [];
 
     // Generate all possible model pairs
-    const allModels = ['marian', 'google', 'm2m100', 'chatgpt'];
+    const allModels = ['marian', 'google', 'm2m100'];
     for (let i = 0; i < allModels.length; i++) {
       for (let j = i + 1; j < allModels.length; j++) {
         modelPairs.push(`${allModels[i]}-${allModels[j]}`);

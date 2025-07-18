@@ -15,8 +15,7 @@ def test_individual_endpoints():
     endpoints = [
         ("/translate", "MarianMT"),
         ("/translate-google", "Google Translate"),
-        ("/translate-m2m100", "M2M-100"),
-        ("/translate-chatgpt", "ChatGPT")
+        ("/translate-m2m100", "M2M-100")
     ]
     
     print("Testing individual translation endpoints...")
@@ -213,7 +212,7 @@ def performance_benchmark():
     print("🔍 Running performance benchmark...")
     
     # Test available models
-    models_to_test = ["marian", "google", "m2m100", "chatgpt"]
+    models_to_test = ["marian", "google", "m2m100"]
     results = {}
     
     for model in models_to_test:
@@ -231,9 +230,6 @@ def performance_benchmark():
                     data = {"text": text, "targetLanguage": target_language}
                 elif model == "m2m100":
                     endpoint = "/translate-m2m100"
-                    data = {"text": text, "targetLanguage": target_language}
-                elif model == "chatgpt":
-                    endpoint = "/translate-chatgpt"
                     data = {"text": text, "targetLanguage": target_language}
                 
                 response = requests.post(f"{base_url}{endpoint}", json=data, timeout=30)
@@ -301,7 +297,7 @@ def performance_benchmark():
         print(f"🛡️ Most Reliable: {most_reliable.upper()} ({highest_success:.1f}% success)")
 
 if __name__ == "__main__":
-    print("🧪 Translation Models Debug Tool")
+    print("🧪 Translation Models Debug Tool (MADLAD Removed)")
     print("=" * 60)
     
     # Test server health first
@@ -322,6 +318,6 @@ if __name__ == "__main__":
     
     print("\n" + "=" * 60)
     print("🏁 Debug complete!")
-    print("Available models: MarianMT, Google Translate, M2M-100, ChatGPT")
+    print("Available models: MarianMT, Google Translate, M2M-100")
     print("\nIf M2M-100 shows timeouts or memory errors,")
     print("it might be too large for your system.")

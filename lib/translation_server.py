@@ -1,4 +1,3 @@
-import os
 import time
 import logging
 from datetime import datetime
@@ -15,7 +14,6 @@ from googletrans import Translator
 import gc
 from typing import Dict, Any
 from pathlib import Path
-from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(
@@ -31,11 +29,6 @@ CORS(app)
 # Audio test data storage
 AUDIO_TEST_DIR = Path("audio_tests")
 AUDIO_TEST_DIR.mkdir(exist_ok=True)
-
-# Initialize OpenAI client
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")  # Make sure this environment variable is set
-)
 
 class TranslationService:
     """Complete translation service with multiple models"""
@@ -454,49 +447,6 @@ class TranslationService:
                 "error": str(e)
             }
     
-    def translate_with_chatgpt(self, text: str, target_language: str) -> Dict[str, Any]:
-        """Translate text using ChatGPT"""
-        start_time = time.time()
-        
-        try:
-            # Create the prompt
-            prompt = f"Translate the following English text to {target_language}. Only provide the translation, no explanation:\n\n{text}"
-            
-            # Make API call
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500,
-                temperature=0.3
-            )
-            
-            translation = response.choices[0].message.content.strip()
-            
-            end_time = time.time()
-            latency = end_time - start_time
-            
-            return {
-                "translation": translation,
-                "latency": latency,
-                "model": "ChatGPT",
-                "status": "success",
-                "error": None
-            }
-            
-        except Exception as e:
-            end_time = time.time()
-            latency = end_time - start_time
-            
-            return {
-                "translation": None,
-                "latency": latency,
-                "model": "ChatGPT",
-                "status": "failed",
-                "error": str(e)
-            }
-    
     def cleanup_memory(self):
         """Clean up GPU memory"""
         if torch.cuda.is_available():
@@ -642,41 +592,6 @@ def translate_google():
             "error": str(e)
         }), 500
 
-@app.route('/translate-chatgpt', methods=['POST'])
-def translate_chatgpt():
-    """Translate using ChatGPT"""
-    try:
-        data = request.get_json()
-        text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'french')
-        
-        if not text:
-            return jsonify({
-                "translation": None,
-                "latency": 0,
-                "model": "ChatGPT",
-                "status": "failed",
-                "error": "No text provided"
-            }), 400
-        
-        result = translation_service.translate_with_chatgpt(text, target_language)
-        translation_service.translation_count += 1
-        
-        if result["status"] == "success":
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 500
-            
-    except Exception as e:
-        logger.error(f"ChatGPT translation error: {e}")
-        return jsonify({
-            "translation": None,
-            "latency": 0,
-            "model": "ChatGPT",
-            "status": "failed",
-            "error": str(e)
-        }), 500
-
 @app.route('/compare', methods=['POST'])
 def compare_translations():
     """Compare MarianMT and Google Translate"""
@@ -792,8 +707,6 @@ def compare_custom_models():
                 results['google'] = translation_service.translate_with_google(text, target_language)
             elif model == 'm2m100':
                 results['m2m100'] = translation_service.translate_with_m2m100(text, target_language)
-            elif model == 'chatgpt':
-                results['chatgpt'] = translation_service.translate_with_chatgpt(text, target_language)
             else:
                 results[model] = {
                     "translation": None,
@@ -964,7 +877,6 @@ def not_found(error):
             "/translate",
             "/translate-m2m100", 
             "/translate-google",
-            "/translate-chatgpt",
             "/compare",
             "/compare-three",
             "/compare-custom",
@@ -1001,14 +913,12 @@ if __name__ == "__main__":
     logger.info("   - MarianMT (Helsinki-NLP)")
     logger.info("   - M2M-100 (Facebook)")
     logger.info("   - Google Translate")
-    logger.info("   - ChatGPT (OpenAI)")
     
     logger.info("🌐 Available Endpoints:")
     logger.info("   - /health - Health check")
     logger.info("   - /translate - Main translation (MarianMT/Google)")
     logger.info("   - /translate-m2m100 - M2M-100 translation")
     logger.info("   - /translate-google - Google Translate")
-    logger.info("   - /translate-chatgpt - ChatGPT translation")
     logger.info("   - /compare - Compare MarianMT vs Google")
     logger.info("   - /compare-three - Compare three models")
     logger.info("   - /compare-custom - Compare custom models")
