@@ -1,23 +1,17 @@
-import os
 import time
 import logging
 from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import concurrent.futures
 import torch
 from transformers import (
     MarianMTModel, 
     MarianTokenizer,
     M2M100ForConditionalGeneration, 
-    M2M100Tokenizer,
-    AutoTokenizer,
-    AutoModelForSeq2SeqLM,
-    pipeline
+    M2M100Tokenizer
 )
 from googletrans import Translator
-import gc
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
 # Configure logging
 logging.basicConfig(
@@ -31,7 +25,7 @@ app = Flask(__name__)
 CORS(app)
 
 class TranslationService:
-    """Complete translation service with multiple models"""
+    """Translation service"""
     
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,8 +35,6 @@ class TranslationService:
         self.marian_models = {}  # Cache for different language pairs
         self.m2m100_model = None
         self.m2m100_tokenizer = None
-        self.madlad_model = None
-        self.madlad_tokenizer = None
         self.google_translator = None
         
         self.marian_lang_codes = {
@@ -66,26 +58,15 @@ class TranslationService:
             'english': 'en'
         }
         
-        self.madlad_lang_codes = {
-            'chinese': 'zh',
-            'tamil': 'ta',
-            'french': 'fr',
-            'spanish': 'es',
-            'german': 'de',
-            'japanese': 'ja',
-            'korean': 'ko',
-            'english': 'en'
-        }
-        
         # Performance tracking
         self.translation_count = 0
         self.start_time = datetime.now()
     
     def get_marian_model_name(self, target_language: str) -> str:
-        """Get the appropriate MarianMT model name for the target language"""
+        """Get the appropriate MarianMT model for target language"""
         marian_models = {
             'chinese': 'Helsinki-NLP/opus-mt-en-zh',
-            'tamil': 'Helsinki-NLP/opus-mt-en-ta', 
+            'tamil': 'Helsinki-NLP/opus-mt-en-mul',  # Multilingual for Tamil
             'french': 'Helsinki-NLP/opus-mt-en-fr',
             'spanish': 'Helsinki-NLP/opus-mt-en-es',
             'german': 'Helsinki-NLP/opus-mt-en-de',
@@ -138,30 +119,6 @@ class TranslationService:
                 
             except Exception as e:
                 logger.error(f"Failed to load M2M-100 model: {e}")
-                raise
-    
-    def load_madlad_model(self):
-        """Load MADLAD-400 model (Google's 400+ language model)"""
-        if self.madlad_model is None:
-            try:
-                logger.info("Loading MADLAD-400 model...")
-                # Using the 3B parameter model
-                model_name = "google/madlad400-3b-mt"
-                
-                self.madlad_tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.madlad_model = AutoModelForSeq2SeqLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                    device_map="auto" if torch.cuda.is_available() else None
-                )
-                
-                if not torch.cuda.is_available():
-                    self.madlad_model = self.madlad_model.to(self.device)
-                
-                logger.info("MADLAD-400 model loaded successfully")
-                
-            except Exception as e:
-                logger.error(f"Failed to load MADLAD-400 model: {e}")
                 raise
     
     def load_google_translator(self):
@@ -225,16 +182,15 @@ class TranslationService:
                 "status": "failed",
                 "error": str(e)
             }
-    
+
     def translate_with_m2m100(self, text: str, target_language: str) -> Dict[str, Any]:
-        """Translate text using M2M-100 (Facebook)"""
+        """Translate text using M2M-100"""
         start_time = time.time()
         
         try:
             self.load_m2m100_model()
             
-            # Get language codes
-            src_lang = self.m2m100_lang_codes.get('english', 'en')
+            # Get language code
             tgt_lang = self.m2m100_lang_codes.get(target_language.lower())
             
             if not tgt_lang:
@@ -246,27 +202,36 @@ class TranslationService:
                     "error": f"Unsupported language: {target_language}"
                 }
             
-            # Set source language
-            self.m2m100_tokenizer.src_lang = src_lang
+            # Set target language
+            self.m2m100_tokenizer.src_lang = "en"
             
             # Tokenize input
-            encoded = self.m2m100_tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+            inputs = self.m2m100_tokenizer(
+                text, 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True,
+                max_length=512
+            )
+            
             if torch.cuda.is_available():
-                encoded = {k: v.to(self.device) for k, v in encoded.items()}
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
             # Generate translation
             with torch.no_grad():
                 generated_tokens = self.m2m100_model.generate(
-                    **encoded,
+                    **inputs, 
                     forced_bos_token_id=self.m2m100_tokenizer.get_lang_id(tgt_lang),
                     max_length=512,
                     num_beams=4,
-                    early_stopping=True
+                    early_stopping=True,
+                    do_sample=False
                 )
             
             # Decode translation
             translation = self.m2m100_tokenizer.batch_decode(
-                generated_tokens, skip_special_tokens=True
+                generated_tokens, 
+                skip_special_tokens=True
             )[0]
             
             end_time = time.time()
@@ -288,85 +253,6 @@ class TranslationService:
                 "translation": None,
                 "latency": latency,
                 "model": "M2M-100",
-                "status": "failed",
-                "error": str(e)
-            }
-    
-    def translate_with_madlad(self, text: str, target_language: str) -> Dict[str, Any]:
-        """Translate text using MADLAD-400 (Google)"""
-        start_time = time.time()
-        
-        try:
-            self.load_madlad_model()
-            
-            # Get language code
-            tgt_lang = self.madlad_lang_codes.get(target_language.lower())
-            
-            if not tgt_lang:
-                return {
-                    "translation": None,
-                    "latency": time.time() - start_time,
-                    "model": "MADLAD-400",
-                    "status": "failed",
-                    "error": f"Unsupported language: {target_language}"
-                }
-            
-            # Format input for MADLAD-400
-            input_text = f"<2{tgt_lang}> {text}"
-            
-            # Tokenize input
-            inputs = self.madlad_tokenizer(
-                input_text, 
-                return_tensors="pt", 
-                padding=True, 
-                truncation=True,
-                max_length=512
-            )
-            
-            if torch.cuda.is_available() and hasattr(inputs, 'to'):
-                inputs = inputs.to(self.device)
-            elif torch.cuda.is_available():
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
-            # Generate translation
-            with torch.no_grad():
-                output_tokens = self.madlad_model.generate(
-                    **inputs,
-                    max_length=512,
-                    num_beams=4,
-                    early_stopping=True,
-                    do_sample=False
-                )
-            
-            # Decode translation
-            translation = self.madlad_tokenizer.decode(
-                output_tokens[0], 
-                skip_special_tokens=True
-            )
-            
-            # Clean up the output
-            if translation.startswith(input_text):
-                translation = translation[len(input_text):].strip()
-            
-            end_time = time.time()
-            latency = end_time - start_time
-            
-            return {
-                "translation": translation,
-                "latency": latency,
-                "model": "MADLAD-400",
-                "status": "success",
-                "error": None
-            }
-            
-        except Exception as e:
-            end_time = time.time()
-            latency = end_time - start_time
-            
-            return {
-                "translation": None,
-                "latency": latency,
-                "model": "MADLAD-400",
                 "status": "failed",
                 "error": str(e)
             }
@@ -414,37 +300,28 @@ class TranslationService:
                 "status": "failed",
                 "error": str(e)
             }
-    
-    def cleanup_memory(self):
-        """Clean up GPU memory"""
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
 
-# Global service instance
+# Initialize translation service
 translation_service = TranslationService()
 
-# ============================================================================
-# FLASK ENDPOINTS
-# ============================================================================
-
+# Flask Routes
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     uptime = datetime.now() - translation_service.start_time
     
     return jsonify({
-        "status": "online",
+        "status": "healthy",
         "uptime_seconds": int(uptime.total_seconds()),
         "translation_count": translation_service.translation_count,
-        "device": str(translation_service.device),
         "cuda_available": torch.cuda.is_available(),
-        "models": ["MarianMT", "M2M-100", "MADLAD-400", "Google Translate"]
+        "device": str(translation_service.device),
+        "timestamp": datetime.now().isoformat()
     }), 200
 
 @app.route('/translate', methods=['POST'])
-def translate_marian():
-    """Translate using MarianMT"""
+def translate():
+    """Main translation endpoint (MarianMT)"""
     try:
         data = request.get_json()
         text = data.get('text', '')
@@ -512,41 +389,6 @@ def translate_m2m100():
             "error": str(e)
         }), 500
 
-@app.route('/translate-madlad', methods=['POST'])
-def translate_madlad():
-    """Translate using MADLAD-400"""
-    try:
-        data = request.get_json()
-        text = data.get('text', '')
-        target_language = data.get('targetLanguage', 'french')
-        
-        if not text:
-            return jsonify({
-                "translation": None,
-                "latency": 0,
-                "model": "MADLAD-400",
-                "status": "failed",
-                "error": "No text provided"
-            }), 400
-        
-        result = translation_service.translate_with_madlad(text, target_language)
-        translation_service.translation_count += 1
-        
-        if result["status"] == "success":
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 500
-            
-    except Exception as e:
-        logger.error(f"MADLAD-400 translation error: {e}")
-        return jsonify({
-            "translation": None,
-            "latency": 0,
-            "model": "MADLAD-400",
-            "status": "failed",
-            "error": str(e)
-        }), 500
-
 @app.route('/translate-google', methods=['POST'])
 def translate_google():
     """Translate using Google Translate"""
@@ -573,7 +415,7 @@ def translate_google():
             return jsonify(result), 500
             
     except Exception as e:
-        logger.error(f"Google Translate error: {e}")
+        logger.error(f"Google translation error: {e}")
         return jsonify({
             "translation": None,
             "latency": 0,
@@ -583,7 +425,7 @@ def translate_google():
         }), 500
 
 @app.route('/compare', methods=['POST'])
-def compare_two_models():
+def compare_translations():
     """Compare MarianMT and Google Translate"""
     try:
         data = request.get_json()
@@ -595,43 +437,46 @@ def compare_two_models():
                 "error": "No text provided"
             }), 400
         
-        # Run translations in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            marian_future = executor.submit(translation_service.translate_with_marian, text, target_language)
-            google_future = executor.submit(translation_service.translate_with_google, text, target_language)
-            
-            marian_result = marian_future.result()
-            google_result = google_future.result()
+        # Get translations from both models
+        marian_result = translation_service.translate_with_marian(text, target_language)
+        google_result = translation_service.translate_with_google(text, target_language)
         
         translation_service.translation_count += 2
         
-        # Calculate comparison metrics
-        are_same = (marian_result.get('translation') == google_result.get('translation'))
-        length_diff = abs(len(marian_result.get('translation', '')) - len(google_result.get('translation', '')))
-        speed_diff = marian_result.get('latency', 0) - google_result.get('latency', 0)
+        # Compare results
+        comparison = {
+            "are_same": False,
+            "length_diff": 0,
+            "speed_diff": 0
+        }
+        
+        if (marian_result["status"] == "success" and 
+            google_result["status"] == "success"):
+            
+            marian_trans = marian_result["translation"]
+            google_trans = google_result["translation"]
+            
+            comparison["are_same"] = marian_trans.lower().strip() == google_trans.lower().strip()
+            comparison["length_diff"] = len(marian_trans) - len(google_trans)
+            comparison["speed_diff"] = marian_result["latency"] - google_result["latency"]
         
         return jsonify({
-            "source_text": text,
+            "original": text,
             "target_language": target_language,
             "marian": marian_result,
             "google": google_result,
-            "comparison": {
-                "are_same": are_same,
-                "length_diff": length_diff,
-                "speed_diff": speed_diff,
-                "note": f"MarianMT was {'faster' if speed_diff < 0 else 'slower'} by {abs(speed_diff):.2f}s"
-            }
+            "comparison": comparison
         }), 200
         
     except Exception as e:
-        logger.error(f"Two model comparison error: {e}")
+        logger.error(f"Comparison error: {e}")
         return jsonify({
             "error": str(e)
         }), 500
 
 @app.route('/compare-three', methods=['POST'])
 def compare_three_models():
-    """Compare MarianMT, M2M-100, and MADLAD-400"""
+    """Compare MarianMT, Google Translate, and M2M-100"""
     try:
         data = request.get_json()
         text = data.get('text', '')
@@ -642,44 +487,25 @@ def compare_three_models():
                 "error": "No text provided"
             }), 400
         
-        # Run translations in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            marian_future = executor.submit(translation_service.translate_with_marian, text, target_language)
-            m2m100_future = executor.submit(translation_service.translate_with_m2m100, text, target_language)
-            madlad_future = executor.submit(translation_service.translate_with_madlad, text, target_language)
-            
-            marian_result = marian_future.result()
-            m2m100_result = m2m100_future.result()
-            madlad_result = madlad_future.result()
+        # Get translations from all three models
+        marian_result = translation_service.translate_with_marian(text, target_language)
+        google_result = translation_service.translate_with_google(text, target_language)
+        m2m100_result = translation_service.translate_with_m2m100(text, target_language)
         
         translation_service.translation_count += 3
         
-        # Calculate comparison metrics
-        successful_models = []
-        if marian_result['status'] == 'success':
-            successful_models.append('marian')
-        if m2m100_result['status'] == 'success':
-            successful_models.append('m2m100')
-        if madlad_result['status'] == 'success':
-            successful_models.append('madlad')
-        
         return jsonify({
-            "source_text": text,
+            "original": text,
             "target_language": target_language,
             "results": {
                 "marian": marian_result,
-                "m2m100": m2m100_result,
-                "madlad": madlad_result
-            },
-            "comparison": {
-                "successful_models": successful_models,
-                "total_models": 3,
-                "success_rate": len(successful_models) / 3
+                "google": google_result,
+                "m2m100": m2m100_result
             }
         }), 200
         
     except Exception as e:
-        logger.error(f"Three model comparison error: {e}")
+        logger.error(f"Three-way comparison error: {e}")
         return jsonify({
             "error": str(e)
         }), 500
@@ -691,76 +517,54 @@ def compare_custom_models():
         data = request.get_json()
         text = data.get('text', '')
         target_language = data.get('targetLanguage', 'french')
-        models = data.get('models', ['marian', 'm2m100'])
+        models = data.get('models', ['marian', 'google'])  # Default models
         
         if not text:
             return jsonify({
                 "error": "No text provided"
             }), 400
         
-        if not models:
+        if not models or len(models) == 0:
             return jsonify({
                 "error": "No models specified"
             }), 400
         
-        # Map model names to functions
-        model_functions = {
-            'marian': translation_service.translate_with_marian,
-            'm2m100': translation_service.translate_with_m2m100,
-            'madlad': translation_service.translate_with_madlad,
-            'google': translation_service.translate_with_google
-        }
-        
         results = {}
         
-        # Run translations in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as executor:
-            futures = {}
-            for model in models:
-                if model in model_functions:
-                    futures[model] = executor.submit(model_functions[model], text, target_language)
-            
-            for model, future in futures.items():
-                results[model] = future.result()
+        # Process each requested model
+        for model in models:
+            if model == 'marian':
+                results['marian'] = translation_service.translate_with_marian(text, target_language)
+            elif model == 'google':
+                results['google'] = translation_service.translate_with_google(text, target_language)
+            elif model == 'm2m100':
+                results['m2m100'] = translation_service.translate_with_m2m100(text, target_language)
+            else:
+                results[model] = {
+                    "translation": None,
+                    "latency": 0,
+                    "model": model,
+                    "status": "failed",
+                    "error": f"Unknown model: {model}"
+                }
         
         translation_service.translation_count += len(models)
         
-        # Calculate success rate
-        successful_models = [model for model, result in results.items() if result['status'] == 'success']
-        
         return jsonify({
-            "source_text": text,
+            "original": text,
             "target_language": target_language,
-            "selected_models": models,
-            "results": results,
-            "successful_models": successful_models,
-            "success_rate": len(successful_models) / len(models)
+            "results": results
         }), 200
         
     except Exception as e:
-        logger.error(f"Custom model comparison error: {e}")
+        logger.error(f"Custom comparison error: {e}")
         return jsonify({
-            "error": str(e)
-        }), 500
-
-@app.route('/cleanup', methods=['POST'])
-def cleanup_memory():
-    """Clean up GPU memory"""
-    try:
-        translation_service.cleanup_memory()
-        return jsonify({
-            "status": "success",
-            "message": "Memory cleanup completed"
-        }), 200
-    except Exception as e:
-        return jsonify({
-            "status": "error",
             "error": str(e)
         }), 500
 
 @app.route('/models', methods=['GET'])
 def get_available_models():
-    """Get list of available models"""
+    """Get list of available translation models"""
     return jsonify({
         "models": [
             {
@@ -774,12 +578,6 @@ def get_available_models():
                 "display_name": "M2M-100",
                 "provider": "Facebook",
                 "languages": list(translation_service.m2m100_lang_codes.keys())
-            },
-            {
-                "name": "madlad",
-                "display_name": "MADLAD-400",
-                "provider": "Google",
-                "languages": list(translation_service.madlad_lang_codes.keys())
             },
             {
                 "name": "google",
@@ -799,13 +597,11 @@ def not_found(error):
             "/health",
             "/translate",
             "/translate-m2m100", 
-            "/translate-madlad",
             "/translate-google",
             "/compare",
             "/compare-three",
             "/compare-custom",
-            "/models",
-            "/cleanup"
+            "/models"
         ]
     }), 404
 
@@ -822,7 +618,7 @@ def internal_error(error):
 
 if __name__ == "__main__":
     logger.info("=" * 60)
-    logger.info("🚀 Starting Complete Translation Server")
+    logger.info("🚀 Starting Translation Server")
     logger.info("=" * 60)
     logger.info(f"🔧 Device: {translation_service.device}")
     logger.info(f"🎮 CUDA Available: {torch.cuda.is_available()}")
@@ -834,7 +630,6 @@ if __name__ == "__main__":
     logger.info("📦 Available Models:")
     logger.info("   - MarianMT (Helsinki-NLP)")
     logger.info("   - M2M-100 (Facebook)")
-    logger.info("   - MADLAD-400 (Google)")
     logger.info("   - Google Translate")
     
     logger.info("🌐 Server starting on http://localhost:5000")
