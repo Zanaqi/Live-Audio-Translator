@@ -160,7 +160,7 @@ class TranslationService:
         """Get the appropriate MarianMT model for target language"""
         marian_models = {
             'chinese': 'Helsinki-NLP/opus-mt-en-zh',
-            'tamil': 'Helsinki-NLP/opus-mt-en-mul',  # Multilingual for Tamil
+            'tamil': 'Helsinki-NLP/opus-mt-en-mul',
             'french': 'Helsinki-NLP/opus-mt-en-fr',
             'spanish': 'Helsinki-NLP/opus-mt-en-es',
             'german': 'Helsinki-NLP/opus-mt-en-de',

@@ -480,7 +480,7 @@ const TranslationTestPage: React.FC = () => {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            📝 Text Testing
+            Text Testing
           </button>
           <button
             onClick={() => setTestingMode('audio')}
@@ -490,7 +490,7 @@ const TranslationTestPage: React.FC = () => {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            🎙️ Audio Testing
+            Audio Testing
           </button>
         </div>
       </div>
@@ -533,10 +533,10 @@ const TranslationTestPage: React.FC = () => {
         {/* Reference Model Selection */}
         <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <h2 className="text-xl font-semibold mb-3 text-yellow-800">
-            🎯 Choose Base Model for Accuracy Metrics
+            Choose Base Model for Accuracy Metrics
           </h2>
           <p className="text-sm text-yellow-700 mb-3">
-            Select which model's translation will be used as the reference for calculating BLEU and ROUGE scores. This model will NOT be included in the comparison.
+            Select which model's translation will be used as the reference for calculating BLEU scores. This model will NOT be included in the comparison.
           </p>
           
           {(['marian', 'google', 'm2m100'] as const)
@@ -568,7 +568,7 @@ const TranslationTestPage: React.FC = () => {
           ) : (
             <div className="text-yellow-700 bg-yellow-100 p-3 rounded-md">
               <p className="text-sm">
-                ⚠️ No available models for reference. You have selected all available models for comparison.
+                No available models for reference. You have selected all available models for comparison.
               </p>
               <p className="text-xs mt-1">
                 To enable accuracy metrics, deselect at least one model to use as reference.
@@ -631,10 +631,10 @@ const TranslationTestPage: React.FC = () => {
                     onChange={(e) => setSelectedTestSet(e.target.value)}
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="museum_tour">🏛️ Museum Tour</option>
-                    <option value="airport_announcement">✈️ Airport Announcements</option>
-                    <option value="restaurant">🍽️ Restaurant</option>
-                    <option value="business">💼 Business Meeting</option>
+                    <option value="museum_tour">Museum Tour</option>
+                    <option value="airport_announcement">Airport Announcements</option>
+                    <option value="restaurant">Restaurant</option>
+                    <option value="business">Business Meeting</option>
                   </select>
                 </div>
                 
@@ -723,7 +723,7 @@ const TranslationTestPage: React.FC = () => {
       {/* Overall Summary Section */}
       {testResults.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">📊 Overall Performance Summary</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Overall Performance Summary</h2>
           
           {/* Performance Overview Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -752,7 +752,7 @@ const TranslationTestPage: React.FC = () => {
             const bestModel = getBestPerformingModel();
             return bestModel && (
               <div className="mb-8 p-6 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">🏆 Best Performing Model</h3>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Best Performing Model</h3>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-2xl font-bold text-green-600">{bestModel.model}</p>
@@ -872,7 +872,7 @@ const TranslationTestPage: React.FC = () => {
 
           {/* Insights and Recommendations */}
           <div className="mt-8 p-6 bg-gray-50 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3">💡 Key Insights</h3>
+            <h3 className="text-lg font-semibold mb-3">Key Insights</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">Speed Leader:</h4>
@@ -935,7 +935,7 @@ const TranslationTestPage: React.FC = () => {
       {/* Individual Test Results */}
       {testResults.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">📝 Individual Test Results ({testResults.length})</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Individual Test Results ({testResults.length})</h2>
           
           <div className="space-y-6">
             {testResults.map((result) => (
