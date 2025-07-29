@@ -37,6 +37,13 @@ interface CustomComparisonResponse {
   results: { [key: string]: TranslationResponse };
 }
 
+interface AllModelsComparisonResponse {
+  original: string;
+  target_language: string;
+  results: { [key: string]: TranslationResponse };
+  models_tested: number;
+}
+
 interface ThreeWayComparisonResponse {
   original: string;
   target_language: string;
@@ -86,14 +93,90 @@ interface ModelSetPerformanceAnalysis {
   };
 }
 
-type ModelName = 'marian' | 'google' | 'm2m100';
+interface ModelsResponse {
+  models: {
+    [key: string]: {
+      name: string;
+      status: boolean | { [key: string]: boolean };
+      languages: string[];
+      description: string;
+    };
+  };
+  total_models: number;
+  loaded_models: number;
+}
+
+interface HealthResponse {
+  status: string;
+  uptime_seconds: number;
+  translation_count: number;
+  device: string;
+  models_loaded: {
+    google: boolean;
+    m2m100: boolean;
+    marian: { [key: string]: boolean };
+    deepl: boolean;
+    madlad: boolean;
+  };
+  model_health: { [key: string]: boolean };
+  enhanced_features: string[];
+}
+
+// Updated to include new models
+type ModelName = 'marian' | 'google' | 'm2m100' | 'deepl' | 'madlad';
 type ModelSet = ModelName[];
 
 export class EnhancedTranslationService {
   private static readonly BASE_URL = "http://localhost:5000";
 
   /**
-   * Translate text using a specific model
+   * Get available models and their status
+   */
+  static async getAvailableModels(): Promise<ModelsResponse> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/models`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching available models:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced health check including new models
+   */
+  static async checkHealth(): Promise<HealthResponse> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/health`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error checking health:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Translate text using a specific model (including new models)
    */
   static async translateText(
     text: string,
@@ -118,6 +201,14 @@ export class EnhancedTranslationService {
           endpoint = "/translate-m2m100";
           requestModel = 'm2m100';
           break;
+        case 'deepl':
+          endpoint = "/translate-deepl";
+          requestModel = 'deepl';
+          break;
+        case 'madlad':
+          endpoint = "/translate-madlad";
+          requestModel = 'madlad';
+          break;
         default:
           endpoint = "/translate";
           requestModel = 'marian';
@@ -139,81 +230,16 @@ export class EnhancedTranslationService {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const result: TranslationResponse = await response.json();
-      
-      if (result.status === "success") {
-        return result.translation;
-      } else {
-        throw new Error(result.error || "Translation failed");
-      }
+      const data: TranslationResponse = await response.json();
+      return data.translation;
     } catch (error) {
-      console.error(`Translation error with ${model}:`, error);
+      console.error(`Error translating with ${model}:`, error);
       throw error;
     }
   }
 
   /**
-   * Compare translations between MarianMT and Google Translate
-   */
-  static async compareTranslations(
-    text: string,
-    targetLanguage: string
-  ): Promise<ComparisonResponse> {
-    try {
-      const response = await fetch(`${this.BASE_URL}/compare`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          targetLanguage,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Comparison error:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Compare translations across three models: MarianMT, Google, and M2M-100
-   */
-  static async compareThreeModels(
-    text: string,
-    targetLanguage: string
-  ): Promise<ThreeWayComparisonResponse> {
-    try {
-      const response = await fetch(`${this.BASE_URL}/compare-three`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          targetLanguage,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Three-way comparison error:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Compare translations across custom selection of models
+   * Compare custom selection of models (including new models)
    */
   static async compareCustomModels(
     text: string,
@@ -239,17 +265,111 @@ export class EnhancedTranslationService {
 
       return await response.json();
     } catch (error) {
-      console.error("Custom comparison error:", error);
+      console.error("Error in custom comparison:", error);
       throw error;
     }
   }
 
   /**
-   * Run audio translation tests
+   * Compare ALL available models (including new ones)
    */
-  static async runAudioTests(
+  static async compareAllModels(
+    text: string,
+    targetLanguage: string
+  ): Promise<AllModelsComparisonResponse> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/compare-all`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error in all models comparison:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Compare three specific models (legacy compatibility)
+   */
+  static async compareThreeWay(
+    text: string,
+    targetLanguage: string
+  ): Promise<ThreeWayComparisonResponse> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/compare-three`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error in three-way comparison:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Compare two models (legacy compatibility)
+   */
+  static async compareTwoModels(
+    text: string,
     targetLanguage: string,
-    testCase: 'museum_tour' | 'airport_announcement' | 'restaurant' = 'museum_tour'
+    model1: string = "marian",
+    model2: string = "google"
+  ): Promise<ComparisonResponse> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/compare`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          targetLanguage,
+          model1,
+          model2,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error in two-model comparison:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Test audio translation scenarios
+   */
+  static async testAudioTranslation(
+    targetLanguage: string,
+    testCase: string = "museum_tour"
   ): Promise<AudioTestResponse> {
     try {
       const response = await fetch(`${this.BASE_URL}/test-audio`, {
@@ -269,281 +389,366 @@ export class EnhancedTranslationService {
 
       return await response.json();
     } catch (error) {
-      console.error("Audio test error:", error);
+      console.error("Error in audio testing:", error);
       throw error;
     }
   }
 
   /**
-   * Get server health status
+   * Enhanced batch translation with multiple models
    */
-  static async getHealthStatus(): Promise<any> {
-    try {
-      const response = await fetch(`${this.BASE_URL}/health`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Health check error:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get list of supported languages
-   */
-  static async getSupportedLanguages(): Promise<any> {
-    try {
-      const response = await fetch(`${this.BASE_URL}/languages`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Languages fetch error:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get list of available models
-   */
-  static async getAvailableModels(): Promise<any> {
-    try {
-      const response = await fetch(`${this.BASE_URL}/models`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Models fetch error:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Batch translation testing with multiple model sets
-   */
-  static async performModelSetAnalysis(
+  static async batchTranslate(
     texts: string[],
     targetLanguage: string,
-    modelSets: { name: string; models: ModelName[] }[]
-  ): Promise<ModelSetPerformanceAnalysis> {
-    try {
-      const results: ModelSetPerformanceAnalysis = {
-        sets: [],
-        comparison: {
-          bestPerformingSet: '',
-          modelSimilarity: {}
-        }
-      };
-
-      // Process each model set
-      for (const set of modelSets) {
-        const setResults: CustomComparisonResponse[] = [];
+    models: ModelName[] = ['marian', 'google']
+  ): Promise<Array<CustomComparisonResponse>> {
+    const results: Array<CustomComparisonResponse> = [];
+    
+    for (const text of texts) {
+      try {
+        const result = await this.compareCustomModels(text, targetLanguage, models);
+        results.push(result);
         
-        // Test each text with the current model set
-        for (const text of texts) {
-          try {
-            const result = await this.compareCustomModels(text, targetLanguage, set.models);
-            setResults.push(result);
-          } catch (error) {
-            console.error(`Error testing "${text}" with set ${set.name}:`, error);
-          }
-        }
-
-        // Calculate performance metrics for this set
-        const performance = this.calculateSetPerformance(setResults, set.models);
-        
-        results.sets.push({
-          name: set.name,
-          models: set.models,
-          results: setResults,
-          performance
-        });
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Error translating batch text: "${text}"`, error);
+        // Continue with other texts even if one fails
       }
-
-      // Find best performing set
-      results.comparison.bestPerformingSet = this.findBestPerformingSet(results.sets);
-      
-      // Calculate model similarity scores
-      results.comparison.modelSimilarity = this.calculateModelSimilarity(results.sets);
-
-      return results;
-    } catch (error) {
-      console.error("Model set analysis error:", error);
-      throw error;
     }
+    
+    return results;
   }
 
   /**
-   * Calculate performance metrics for a model set
+   * Analyze performance across different model sets
    */
-  private static calculateSetPerformance(
-    results: CustomComparisonResponse[],
-    models: ModelName[]
-  ): {
-    avgLatency: { [key: string]: number };
-    successRate: { [key: string]: number };
-    totalSuccessRate: number;
-  } {
-    const performance = {
-      avgLatency: {} as { [key: string]: number },
-      successRate: {} as { [key: string]: number },
-      totalSuccessRate: 0
+  static async analyzeModelSetPerformance(
+    testTexts: string[],
+    targetLanguage: string,
+    modelSets: Array<{ name: string; models: ModelName[] }>
+  ): Promise<ModelSetPerformanceAnalysis> {
+    const results: ModelSetPerformanceAnalysis = {
+      sets: [],
+      comparison: {
+        bestPerformingSet: '',
+        modelSimilarity: {}
+      }
     };
 
-    // Initialize metrics for each model
-    models.forEach(model => {
-      performance.avgLatency[model] = 0;
-      performance.successRate[model] = 0;
-    });
-
-    if (results.length === 0) return performance;
-
-    // Calculate averages
-    let totalSuccesses = 0;
-    let totalTests = 0;
-
-    results.forEach(result => {
-      models.forEach(model => {
-        const modelResult = result.results[model];
-        if (modelResult) {
-          totalTests++;
-          performance.avgLatency[model] += modelResult.latency;
+    for (const set of modelSets) {
+      const setResults: CustomComparisonResponse[] = [];
+      
+      for (const text of testTexts) {
+        try {
+          const result = await this.compareCustomModels(text, targetLanguage, set.models);
+          setResults.push(result);
           
-          if (modelResult.status === 'success') {
-            performance.successRate[model]++;
-            totalSuccesses++;
+          // Small delay between requests
+          await new Promise(resolve => setTimeout(resolve, 150));
+        } catch (error) {
+          console.error(`Error in model set analysis for "${set.name}":`, error);
+        }
+      }
+
+      // Calculate performance metrics
+      const avgLatency: { [key: string]: number } = {};
+      const successRate: { [key: string]: number } = {};
+
+      for (const model of set.models) {
+        const latencies: number[] = [];
+        let successCount = 0;
+
+        for (const result of setResults) {
+          const modelResult = result.results[model];
+          if (modelResult) {
+            latencies.push(modelResult.latency);
+            if (modelResult.status === 'success') {
+              successCount++;
+            }
           }
         }
-      });
-    });
 
-    // Finalize averages
-    models.forEach(model => {
-      if (results.length > 0) {
-        performance.avgLatency[model] /= results.length;
-        performance.successRate[model] = (performance.successRate[model] / results.length) * 100;
+        avgLatency[model] = latencies.length > 0 ? 
+          latencies.reduce((sum, lat) => sum + lat, 0) / latencies.length : 0;
+        successRate[model] = setResults.length > 0 ? 
+          (successCount / setResults.length) * 100 : 0;
       }
-    });
 
-    performance.totalSuccessRate = totalTests > 0 ? (totalSuccesses / totalTests) * 100 : 0;
+      const totalSuccessRate = Object.values(successRate).reduce((sum, rate) => sum + rate, 0) / set.models.length;
 
-    return performance;
-  }
-
-  /**
-   * Find the best performing model set based on success rate and speed
-   */
-  private static findBestPerformingSet(
-    sets: Array<{
-      name: string;
-      performance: {
-        totalSuccessRate: number;
-        avgLatency: { [key: string]: number };
-      };
-    }>
-  ): string {
-    let bestSet = '';
-    let bestScore = -1;
-
-    sets.forEach(set => {
-      // Calculate composite score (success rate weighted more heavily)
-      const avgLatency = Object.values(set.performance.avgLatency).reduce((a, b) => a + b, 0) / 
-                        Object.values(set.performance.avgLatency).length;
-      
-      // Score = 70% success rate + 30% speed (inverted latency)
-      const score = (set.performance.totalSuccessRate * 0.7) + 
-                   ((1 / (avgLatency + 0.1)) * 30); // +0.1 to avoid division by zero
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestSet = set.name;
-      }
-    });
-
-    return bestSet;
-  }
-
-  /**
-   * Calculate similarity scores between models based on translation outputs
-   */
-  private static calculateModelSimilarity(
-    sets: Array<{
-      results: CustomComparisonResponse[];
-    }>
-  ): { [key: string]: number } {
-    const similarity: { [key: string]: number } = {};
-    
-    // Simple similarity calculation based on translation length similarity
-    // In a real implementation, you might use more sophisticated NLP similarity metrics
-    
-    const allResults = sets.flatMap(set => set.results);
-    const modelPairs: string[] = [];
-
-    // Generate all possible model pairs
-    const allModels = ['marian', 'google', 'm2m100'];
-    for (let i = 0; i < allModels.length; i++) {
-      for (let j = i + 1; j < allModels.length; j++) {
-        modelPairs.push(`${allModels[i]}-${allModels[j]}`);
-      }
-    }
-
-    modelPairs.forEach(pair => {
-      const [model1, model2] = pair.split('-');
-      let totalSimilarity = 0;
-      let comparisons = 0;
-
-      allResults.forEach(result => {
-        const trans1 = result.results[model1];
-        const trans2 = result.results[model2];
-
-        if (trans1?.status === 'success' && trans2?.status === 'success') {
-          // Simple length-based similarity (can be enhanced with semantic similarity)
-          const len1 = trans1.translation.length;
-          const len2 = trans2.translation.length;
-          const maxLen = Math.max(len1, len2);
-          const similarity = maxLen > 0 ? 1 - Math.abs(len1 - len2) / maxLen : 1;
-          
-          totalSimilarity += similarity;
-          comparisons++;
+      results.sets.push({
+        name: set.name,
+        models: set.models,
+        results: setResults,
+        performance: {
+          avgLatency,
+          successRate,
+          totalSuccessRate
         }
       });
+    }
 
-      similarity[pair] = comparisons > 0 ? (totalSimilarity / comparisons) * 100 : 0;
-    });
+    // Determine best performing set
+    let bestSet = results.sets[0];
+    for (const set of results.sets) {
+      if (set.performance.totalSuccessRate > bestSet.performance.totalSuccessRate) {
+        bestSet = set;
+      }
+    }
+    results.comparison.bestPerformingSet = bestSet.name;
 
-    return similarity;
+    return results;
   }
 
   /**
-   * Clean up server memory
+   * Get model display name for UI
    */
-  static async cleanupMemory(): Promise<any> {
-    try {
-      const response = await fetch(`${this.BASE_URL}/cleanup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+  static getModelDisplayName(model: ModelName): string {
+    const displayNames: { [key in ModelName]: string } = {
+      'marian': 'MarianMT',
+      'google': 'Google Translate',
+      'm2m100': 'M2M-100',
+      'deepl': 'DeepL',
+      'madlad': 'Madlad-400'
+    };
+    
+    return displayNames[model] || model;
+  }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+  /**
+   * Get supported languages for a specific model
+   */
+  static getSupportedLanguages(model: ModelName): string[] {
+    const languageSupport: { [key in ModelName]: string[] } = {
+      'marian': ['chinese', 'tamil', 'french', 'spanish', 'german', 'japanese', 'korean'],
+      'google': ['chinese', 'tamil', 'french', 'spanish', 'german', 'japanese', 'korean'],
+      'm2m100': ['chinese', 'tamil', 'french', 'spanish', 'german', 'japanese', 'korean'],
+      'deepl': ['chinese', 'french', 'spanish', 'german', 'japanese', 'korean'],
+      'madlad': ['chinese', 'tamil', 'french', 'spanish', 'german', 'japanese', 'korean']
+    };
+    
+    return languageSupport[model] || [];
+  }
+
+  /**
+   * Check if a model supports a specific language
+   */
+  static isLanguageSupported(model: ModelName, language: string): boolean {
+    return this.getSupportedLanguages(model).includes(language.toLowerCase());
+  }
+
+  /**
+   * Get all available models
+   */
+  static getAllAvailableModels(): ModelName[] {
+    return ['marian', 'google', 'm2m100', 'deepl', 'madlad'];
+  }
+
+  /**
+   * Get models that support a specific language
+   */
+  static getModelsForLanguage(language: string): ModelName[] {
+    return this.getAllAvailableModels().filter(model => 
+      this.isLanguageSupported(model, language)
+    );
+  }
+
+  /**
+   * Enhanced error handling with model-specific suggestions
+   */
+  static async translateWithFallback(
+    text: string,
+    targetLanguage: string,
+    preferredModels: ModelName[] = ['google', 'marian', 'deepl']
+  ): Promise<{ translation: string; model: ModelName; attempts: number }> {
+    let lastError: Error | null = null;
+    let attempts = 0;
+
+    for (const model of preferredModels) {
+      if (!this.isLanguageSupported(model, targetLanguage)) {
+        continue;
       }
 
-      return await response.json();
-    } catch (error) {
-      console.error("Memory cleanup error:", error);
-      throw error;
+      try {
+        attempts++;
+        const translation = await this.translateText(text, targetLanguage, model);
+        return { translation, model, attempts };
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`Translation failed with ${model}, trying next model:`, error);
+      }
     }
+
+    throw new Error(`All translation attempts failed. Last error: ${lastError?.message}`);
+  }
+
+  /**
+   * Performance benchmarking for new models
+   */
+  static async benchmarkModels(
+    testTexts: string[],
+    targetLanguage: string,
+    models: ModelName[] = ['marian', 'google', 'deepl']
+  ): Promise<{
+    [key in ModelName]?: {
+      avgLatency: number;
+      successRate: number;
+      translations: string[];
+      errors: string[];
+    }
+  }> {
+    const benchmark: any = {};
+
+    for (const model of models) {
+      if (!this.isLanguageSupported(model, targetLanguage)) {
+        continue;
+      }
+
+      const latencies: number[] = [];
+      const translations: string[] = [];
+      const errors: string[] = [];
+      let successCount = 0;
+
+      for (const text of testTexts) {
+        try {
+          const startTime = performance.now();
+          const translation = await this.translateText(text, targetLanguage, model);
+          const endTime = performance.now();
+          
+          latencies.push(endTime - startTime);
+          translations.push(translation);
+          successCount++;
+          
+          // Small delay between requests
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          errors.push((error as Error).message);
+        }
+      }
+
+      benchmark[model] = {
+        avgLatency: latencies.length > 0 ? latencies.reduce((sum, lat) => sum + lat, 0) / latencies.length : 0,
+        successRate: testTexts.length > 0 ? (successCount / testTexts.length) * 100 : 0,
+        translations,
+        errors
+      };
+    }
+
+    return benchmark;
+  }
+
+  /**
+   * Quality assessment using multiple models
+   */
+  static async assessTranslationQuality(
+    text: string,
+    targetLanguage: string,
+    referenceModel: ModelName = 'deepl'
+  ): Promise<{
+    reference: { model: ModelName; translation: string };
+    comparisons: Array<{
+      model: ModelName;
+      translation: string;
+      similarity: number;
+      latency: number;
+    }>;
+  }> {
+    // Get reference translation
+    const referenceTranslation = await this.translateText(text, targetLanguage, referenceModel);
+    
+    // Get translations from other models
+    const otherModels = this.getModelsForLanguage(targetLanguage).filter(m => m !== referenceModel);
+    const comparisons: Array<{
+      model: ModelName;
+      translation: string;
+      similarity: number;
+      latency: number;
+    }> = [];
+
+    for (const model of otherModels) {
+      try {
+        const startTime = performance.now();
+        const translation = await this.translateText(text, targetLanguage, model);
+        const endTime = performance.now();
+        
+        // Simple similarity calculation (could be enhanced with BLEU score or semantic similarity)
+        const similarity = this.calculateSimilarity(referenceTranslation, translation);
+        
+        comparisons.push({
+          model,
+          translation,
+          similarity,
+          latency: endTime - startTime
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Quality assessment failed for ${model}:`, error);
+      }
+    }
+
+    return {
+      reference: { model: referenceModel, translation: referenceTranslation },
+      comparisons: comparisons.sort((a, b) => b.similarity - a.similarity)
+    };
+  }
+
+  /**
+   * Simple similarity calculation (Jaccard similarity)
+   */
+  private static calculateSimilarity(text1: string, text2: string): number {
+    const words1 = new Set(text1.toLowerCase().split(/\s+/));
+    const words2 = new Set(text2.toLowerCase().split(/\s+/));
+    
+    const intersection = new Set([...words1].filter(word => words2.has(word)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size;
+  }
+
+  /**
+   * Get model recommendations based on language and use case
+   */
+  static getModelRecommendations(
+    language: string,
+    useCase: 'speed' | 'quality' | 'multilingual' | 'professional' = 'quality'
+  ): {
+    primary: ModelName[];
+    secondary: ModelName[];
+    notes: string;
+  } {
+    const supportedModels = this.getModelsForLanguage(language);
+    
+    const recommendations = {
+      speed: {
+        primary: ['google', 'marian'] as ModelName[],
+        secondary: ['deepl', 'm2m100'] as ModelName[],
+        notes: 'Prioritizes fast response times over translation quality'
+      },
+      quality: {
+        primary: ['deepl', 'm2m100'] as ModelName[],
+        secondary: ['google', 'madlad'] as ModelName[],
+        notes: 'Prioritizes translation accuracy and naturalness'
+      },
+      multilingual: {
+        primary: ['madlad', 'm2m100'] as ModelName[],
+        secondary: ['google', 'marian'] as ModelName[],
+        notes: 'Best for handling diverse language pairs and rare languages'
+      },
+      professional: {
+        primary: ['deepl'] as ModelName[],
+        secondary: ['google', 'm2m100'] as ModelName[],
+        notes: 'Suitable for business and professional contexts'
+      }
+    };
+
+    const rec = recommendations[useCase];
+    
+    return {
+      primary: rec.primary.filter(model => supportedModels.includes(model)),
+      secondary: rec.secondary.filter(model => supportedModels.includes(model)),
+      notes: rec.notes
+    };
   }
 }
