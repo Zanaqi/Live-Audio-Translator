@@ -742,12 +742,6 @@ const TranslationTestPage: React.FC = () => {
                 >
                   Text Testing
                 </button>
-                <button
-                  onClick={() => setTestingMode('audio')}
-                  className={`px-4 py-2 rounded-lg ${testingMode === 'audio' ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  Audio Testing
-                </button>
               </div>
             </div>
           </div>
@@ -862,50 +856,6 @@ const TranslationTestPage: React.FC = () => {
                     >
                       Run All Tests ({allTestTexts.length})
                     </button>
-                  </div>
-                  
-                  <div className="bg-white p-4 rounded-lg border">
-                    <h4 className="font-medium text-purple-700 mb-2">📚 Paragraph Tests Only</h4>
-                    <p className="text-sm text-gray-600 mb-3">
-                      Test longer content including historical, environmental, technological, 
-                      and philosophical paragraphs
-                    </p>
-                    <div className="text-xs text-gray-500 mb-3">
-                      • Historical and cultural content
-                      <br />• Scientific and environmental topics  
-                      <br />• Technology and AI discussions
-                      <br />• Creative and philosophical writing
-                    </div>
-                    <button
-                      onClick={() => runParagraphTests()}
-                      disabled={isRunningTests || selectedModels.length < 2}
-                      className="w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                      Run Paragraph Tests ({allTestTexts.filter(t => t.text.length > 200).length})
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Test Categories Breakdown */}
-                <div className="bg-white p-4 rounded-lg border">
-                  <h4 className="font-medium text-gray-700 mb-3">Test Categories Overview</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <div className="font-medium text-green-600">Basic Communication</div>
-                      <div className="text-gray-500">Greetings, travel, shopping</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-blue-600">Business & Education</div>
-                      <div className="text-gray-500">Reports, academic content</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-red-600">Technical & Legal</div>
-                      <div className="text-gray-500">Legal docs, scientific papers</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-purple-600">Creative & Philosophy</div>
-                      <div className="text-gray-500">Literature, abstract concepts</div>
-                    </div>
                   </div>
                 </div>
               </div>
